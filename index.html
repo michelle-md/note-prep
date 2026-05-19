@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CareOn Note Prep</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+    --text: #e6edf3;
+    --text-muted: #7d8590;
+    --text-dim: #484f58;
+    --radius: 8px;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-left { display: flex; align-items: center; gap: 10px; }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--bg);
+    letter-spacing: -0.5px;
+    flex-shrink: 0;
+  }
+
+  .app-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.2px;
+  }
+
+  .app-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  .step-indicator {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .step-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background 0.2s;
+  }
+  .step-dot.active { background: var(--accent); }
+  .step-dot.done { background: var(--accent2); }
+
+  main {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface2);
+  }
+
+  .panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.3px;
+  }
+  .badge-blue { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .badge-green { background: rgba(63,185,80,0.15); color: var(--accent2); }
+  .badge-warn { background: rgba(210,153,34,0.15); color: var(--warn); }
+
+  textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    padding: 16px;
+    resize: none;
+    -webkit-appearance: none;
+  }
+
+  textarea::placeholder { color: var(--text-dim); }
+
+  .input-area { min-height: 180px; }
+  .output-area { min-height: 260px; }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 6px;
+    border: none;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-appearance: none;
+    white-space: nowrap;
+  }
+
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary { background: var(--accent); color: var(--bg); }
+  .btn-primary:hover { background: #79c0ff; }
+
+  .btn-success { background: var(--accent2); color: var(--bg); }
+  .btn-success:hover { background: #56d364; }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(248,81,73,0.3); }
+  .btn-danger:hover { background: rgba(248,81,73,0.1); }
+
+  .btn svg { flex-shrink: 0; }
+
+  /* Find & Replace Panel */
+  .fnr-panel {
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .fnr-panel.open { display: flex; }
+
+  .fnr-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .fnr-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    width: 56px;
+    flex-shrink: 0;
+  }
+
+  .fnr-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .fnr-input:focus { border-color: var(--accent); }
+
+  .fnr-info {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding-left: 64px;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--accent2);
+    color: var(--bg);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 22px;
+    border-radius: 20px;
+    opacity: 0;
+    transition: all 0.25s;
+    pointer-events: none;
+    z-index: 999;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.warn { background: var(--warn); }
+  .toast.error { background: var(--danger); }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    gap: 16px;
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+  }
+  .stat span { color: var(--text); }
+
+  /* Divider hint */
+  .divider-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .divider-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--warn);
+  }
+
+  /* Section selector */
+  .section-selector {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: var(--surface2);
+  }
+
+  .section-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .section-chip {
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: var(--sans);
+    transition: all 0.15s;
+  }
+  .section-chip.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .section-chip:hover:not(.active) { border-color: var(--text-muted); color: var(--text); }
+
+  .char-count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* Highlight found text */
+  mark {
+    background: rgba(210,153,34,0.4);
+    color: var(--text);
+    border-radius: 2px;
+  }
+
+  @media (max-width: 600px) {
+    main { padding: 12px; gap: 12px; }
+    textarea { font-size: 14px; }
+    .btn { padding: 10px 14px; font-size: 14px; }
+    .input-area { min-height: 140px; }
+    .output-area { min-height: 220px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo-mark">Rx</div>
+    <div>
+      <div class="app-title">Note Prep</div>
+      <div class="app-sub">CareOn / Netcare ED</div>
+    </div>
+  </div>
+  <div class="step-indicator">
+    <div class="step-dot active" id="dot1"></div>
+    <div class="step-dot" id="dot2"></div>
+    <div class="step-dot" id="dot3"></div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Step 1: Paste input -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5zm-3-1A1.5 1.5 0 0 0 5 1.5H3.5A1.5 1.5 0 0 0 2 3h12a1.5 1.5 0 0 0-1.5-1.5H11A1.5 1.5 0 0 0 9.5 0z"/></svg>
+        Step 1 — Paste Your Clinical Note
+      </div>
+      <span class="badge badge-blue">Input</span>
+    </div>
+    <div style="padding: 10px 16px 0 16px; font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+      Paste your full note output here — including any ICD-10 codes or billing at the bottom. The clinical note will be extracted and formatted automatically for CareOn.<br>
+      <span style="color: var(--text-dim);">Note should begin with patient age and gender. Sections should use standard headings (SUBJECTIVE, OBJECTIVE, ASSESSMENT, PLAN etc).</span>
+    </div>
+    <textarea class="input-area" id="rawInput" placeholder="Paste your clinical note here..." spellcheck="false"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="extractNote()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708z"/></svg>
+        Extract Clinical Note
+      </button>
+      <button class="btn btn-ghost" onclick="clearAll()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0"/></svg>
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 2: Edit extracted note -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+        Step 2 — Review and Edit
+      </div>
+      <span class="badge badge-warn" id="editBadge">Waiting</span>
+    </div>
+    <textarea class="output-area" id="noteOutput" placeholder="Your extracted note will appear here. Review and edit as needed before copying to CareOn." spellcheck="true" oninput="updateStats(); document.getElementById('copyBox').value = this.value;"></textarea>
+
+    <!-- Find & Replace -->
+    <div class="fnr-panel" id="fnrPanel">
+      <div class="fnr-row">
+        <span class="fnr-label">Find</span>
+        <input class="fnr-input" id="fnrFind" type="text" placeholder="Text to find..." autocomplete="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div class="fnr-row">
+        <span class="fnr-label">Replace</span>
+        <input class="fnr-input" id="fnrReplace" type="text" placeholder="Replace with..." autocomplete="off">
+      </div>
+      <div class="fnr-row">
+        <div class="fnr-info" id="fnrInfo">Enter search text above</div>
+        <button class="btn btn-ghost" style="margin-left: auto;" onclick="doReplace()">Replace All</button>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="stat">Words: <span id="wordCount">0</span></div>
+      <div class="stat">Chars: <span id="charCount">0</span></div>
+      <div class="stat">Lines: <span id="lineCount">0</span></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="toggleFnR()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/></svg>
+        Find & Replace
+      </button>
+      <button class="btn btn-ghost" onclick="clearOutput()">
+        Clear Note
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 3: Copy -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/></svg>
+        Step 3 — Copy to CareOn
+      </div>
+      <span class="badge badge-green">Ready to paste</span>
+    </div>
+    <div style="padding: 12px 16px 4px 16px; font-size: 12px; color: var(--text-muted);">
+      Tap <strong style="color:var(--text)">Copy to CareOn</strong> below — then switch to CareOn and paste into the freetext field.
+    </div>
+    <textarea id="copyBox" class="output-area" style="min-height:120px; border-top: 1px solid var(--border); color: var(--accent2);" readonly placeholder="Extract your note above first..."></textarea>
+    <div class="btn-row">
+      <button class="btn btn-success" style="flex:1; justify-content:center;" onclick="copyNote()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13 0H6a2 2 0 0 0-2 2 2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2 2 2 0 0 0 2-2V2a2 2 0 0 0-2-2m0 13H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h1v7a2 2 0 0 0 2 2h6a1 1 0 0 1-1 1m1-3H6a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1"/></svg>
+        Copy to CareOn
+      </button>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (type ? ' ' + type : '');
+    setTimeout(() => { t.className = 'toast'; }, 2200);
+  }
+
+  function updateStepDots(step) {
+    for (let i = 1; i <= 3; i++) {
+      const d = document.getElementById('dot' + i);
+      if (i < step) d.className = 'step-dot done';
+      else if (i === step) d.className = 'step-dot active';
+      else d.className = 'step-dot';
+    }
+  }
+
+  function stripAIPreamble(text) {
+    const lines = text.split('\n');
+    let startIdx = 0;
+
+    // Only strip lines that are clearly AI conversational preamble
+    // Stop as soon as we hit anything that looks like note content
+    for (let i = 0; i < Math.min(lines.length, 6); i++) {
+      const l = lines[i].toLowerCase().trim();
+      const isAIPreamble = (
+        l === '' ||
+        l.startsWith('here is') ||
+        l.startsWith("here's") ||
+        l.startsWith('below is') ||
+        l.startsWith('certainly') ||
+        l.startsWith('sure,') ||
+        l.includes('test note:') ||
+        l.includes('clinical note:') ||
+        l.includes('ed note:') ||
+        l.includes('final output:') ||
+        l.includes('as requested') ||
+        l.includes('as follows')
+      );
+
+      // Stop stripping if this line looks like actual note content
+      const isNoteContent = (
+        /^\d+[-\s](?:year|month|day|week)[-\s]old/i.test(lines[i]) ||
+        /^ED NOTE/i.test(lines[i]) ||
+        /^SUBJECTIVE/i.test(lines[i]) ||
+        /^PRESENTING COMPLAINT/i.test(lines[i]) ||
+        /^presented/i.test(lines[i])
+      );
+
+      if (isNoteContent) break;
+      if (isAIPreamble) startIdx = i + 1;
+      else break;
+    }
+
+    return lines.slice(startIdx).join('\n').trim();
+  }
+
+  // Known section headers that should always start on their own line
+  const SECTION_HEADERS = [
+    'SUBJECTIVE',
+    'OBJECTIVE',
+    'SPECIAL INVESTIGATIONS',
+    'TREATMENT IN THE ED',
+    'PROCEDURES PERFORMED IN THE ED',
+    'ASSESSMENT',
+    'PLAN',
+    'PRESENTING COMPLAINT',
+    'PAST MEDICAL AND SURGICAL HISTORY',
+    'ALLERGIES',
+    'SOCIAL HISTORY',
+    'PHYSICAL EXAMINATION',
+    'EXAMINATION',
+  ];
+
+  // Known inline field labels that should each start on their own line
+  const FIELD_LABELS = [
+    'Presenting complaint:',
+    'Medical conditions:',
+    'Surgical history:',
+    'Medications:',
+    'Allergies:',
+    'Alcohol/cigarettes/drug use:',
+    'Alcohol/cigarette/drug use:',
+    'Vitals:',
+    'HGT:',
+    'General appearance:',
+    'Hydration status:',
+    'CNS:',
+    'CVS:',
+    'RESP:',
+    'ABDO:',
+    'ABD:',
+    'MSK:',
+    'SKIN:',
+    'ENT:',
+    'Calves:',
+    'Weight:',
+    'Now p/w:',
+    'Differentials:',
+    'Injuries identified:',
+    'Mechanism of injury:',
+    'Primary survey:',
+    'Secondary survey:',
+    'ECG:',
+    'Chest X-ray:',
+    'Chest X-Ray:',
+    'X-ray:',
+    'CT:',
+    'Bloods:',
+    'Urine dip:',
+    'Urine BHCG:',
+    'Birth history:',
+    'Immunisations:',
+    'A:',
+    'B:',
+    'C:',
+    'D:',
+    'E:',
+    'RUQ:',
+    'LUQ:',
+    'Pelvis:',
+    'Cardiac:',
+    'Right lung:',
+    'Left lung:',
+    'Shock index:',
+  ];
+
+  function fixSpacingForCareOn(text) {
+    // Step 1: Normalize line endings
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // Step 2: Insert line break before every known section header
+    // that is not already at the start of a line
+    for (const header of SECTION_HEADERS) {
+      // Match the header when preceded by non-newline characters
+      const re = new RegExp('([^\\n])(' + escapeRegex(header) + ')', 'g');
+      text = text.replace(re, '$1\n$2');
+    }
+
+    // Step 3: Insert line break before every known field label
+    // that is not already at the start of a line
+    for (const label of FIELD_LABELS) {
+      const re = new RegExp('([^\\n])(' + escapeRegex(label) + ')', 'g');
+      text = text.replace(re, '$1\n$2');
+    }
+
+    // Step 4: Insert line break before numbered plan items not already on own line
+    text = text.replace(/([^\n])(\d+\.[ \t])/g, '$1\n$2');
+
+    // Step 5: Clean up Plan list indentation
+    text = text.replace(/\n[\t ]+(\d+\.)/g, '\n$1');
+
+    // Step 6: Normalize — collapse 3+ newlines to 2
+    text = text.replace(/\n{3,}/g, '\n\n');
+
+    // Step 7: CareOn requires single line breaks — collapse double to single
+    // BUT preserve blank lines between major sections if they exist
+    // Actually: CareOn preserves single \n — so ensure every line is \n not \n\n
+    // We keep single newlines and remove doubles since CareOn strips doubles anyway
+    text = text.replace(/\n\n+/g, '\n');
+
+    return text.trim();
+  }
+
+  function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function extractNote() {
+    const raw = document.getElementById('rawInput').value.trim();
+    if (!raw) { showToast('Paste your Claude output first', 'warn'); return; }
+
+    // Split on common divider patterns: ---, ___, ***, or lines that are purely dashes/underscores/stars (3+)
+    const dividerRegex = /\n[ \t]*(-{3,}|_{3,}|\*{3,})[ \t]*\n/;
+    const parts = raw.split(dividerRegex);
+
+    let clinical = '';
+    if (parts.length >= 2) {
+      clinical = parts[0].trim();
+    } else {
+      // No divider found — try keyword-based fallback
+      const fallbackMarkers = [
+        /\n#+\s*(ICD[-\s]?10|Billing|Coding|Discharge|Additional)/i,
+        /\n(ICD[-\s]?10|Billing Suggestion|Billing Code|Assessment Code)/i,
+      ];
+      let splitIdx = -1;
+      for (const marker of fallbackMarkers) {
+        const match = raw.search(marker);
+        if (match !== -1) { splitIdx = match; break; }
+      }
+      if (splitIdx > 0) {
+        clinical = raw.substring(0, splitIdx).trim();
+        showToast('Split on ICD-10/Billing section header', 'warn');
+      } else {
+        clinical = raw;
+        showToast('No divider found — showing full text', 'warn');
+      }
+    }
+
+    // Strip any AI conversational preamble before the note starts
+    clinical = stripAIPreamble(clinical);
+    // Auto-convert single line breaks to double for CareOn compatibility
+    clinical = fixSpacingForCareOn(clinical);
+
+    document.getElementById('noteOutput').value = clinical;
+    document.getElementById('copyBox').value = clinical;
+    document.getElementById('editBadge').textContent = 'Ready';
+    document.getElementById('editBadge').className = 'badge badge-green';
+    updateStats();
+    updateStepDots(2);
+    showToast('Extracted + spacing fixed for CareOn');
+
+    // Scroll to edit panel
+    document.getElementById('noteOutput').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function updateStats() {
+    const text = document.getElementById('noteOutput').value;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const chars = text.length;
+    const lines = text ? text.split('\n').length : 0;
+    document.getElementById('wordCount').textContent = words;
+    document.getElementById('charCount').textContent = chars;
+    document.getElementById('lineCount').textContent = lines;
+  }
+
+  function toggleFnR() {
+    const panel = document.getElementById('fnrPanel');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      document.getElementById('fnrFind').focus();
+    }
+  }
+
+  let fnrTimeout = null;
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('fnrFind').addEventListener('input', () => {
+      clearTimeout(fnrTimeout);
+      fnrTimeout = setTimeout(updateFnRCount, 300);
+    });
+  });
+
+  function updateFnRCount() {
+    const find = document.getElementById('fnrFind').value;
+    const text = document.getElementById('noteOutput').value;
+    const info = document.getElementById('fnrInfo');
+    if (!find) { info.textContent = 'Enter search text above'; return; }
+    const count = (text.match(new RegExp(escapeRegex(find), 'gi')) || []).length;
+    info.textContent = count === 0 ? 'No matches found' : `${count} match${count === 1 ? '' : 'es'} found`;
+  }
+
+  function doReplace() {
+    const find = document.getElementById('fnrFind').value;
+    const replace = document.getElementById('fnrReplace').value;
+    if (!find) { showToast('Enter text to find', 'warn'); return; }
+    const ta = document.getElementById('noteOutput');
+    const count = (ta.value.match(new RegExp(escapeRegex(find), 'gi')) || []).length;
+    if (count === 0) { showToast('No matches found', 'warn'); return; }
+    ta.value = ta.value.replace(new RegExp(escapeRegex(find), 'gi'), replace);
+    updateStats();
+    document.getElementById('fnrInfo').textContent = `Replaced ${count} instance${count === 1 ? '' : 's'}`;
+    showToast(`Replaced ${count} instance${count === 1 ? '' : 's'}`);
+  }
+
+  const BOLD_HEADERS = new Set([
+    'SUBJECTIVE','OBJECTIVE','SPECIAL INVESTIGATIONS',
+    'TREATMENT IN THE ED','PROCEDURES PERFORMED IN THE ED',
+    'ASSESSMENT','PLAN','PRESENTING COMPLAINT',
+    'PAST MEDICAL AND SURGICAL HISTORY','ALLERGIES',
+    'SOCIAL HISTORY','PHYSICAL EXAMINATION','EXAMINATION',
+  ]);
+
+  function textToHtml(text) {
+    const lines = text.split('\n');
+    return lines.map((line, i) => {
+      const trimmed = line.trim();
+      const escaped = trimmed
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      if (trimmed === '') {
+        return '<p>&nbsp;</p>';
+      }
+
+      // Bold section headers with extra space above
+      if (BOLD_HEADERS.has(trimmed.toUpperCase())) {
+        const spacer = i > 0 ? '<p>&nbsp;</p>' : '';
+        return spacer + '<p><strong>' + escaped + '</strong></p>';
+      }
+
+      return '<p>' + escaped + '</p>';
+    }).join('');
+  }
+
+  async function copyNote() {
+    const text = document.getElementById('noteOutput').value.trim();
+    if (!text) { showToast('Nothing to copy yet', 'warn'); return; }
+
+    // Sync copy box
+    document.getElementById('copyBox').value = text;
+
+    const html = textToHtml(text);
+
+    // Method 1: Rich text clipboard (HTML) — forces CareOn to respect line breaks
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        const htmlBlob = new Blob([html], { type: 'text/html' });
+        const textBlob = new Blob([text], { type: 'text/plain' });
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': htmlBlob,
+            'text/plain': textBlob,
+          })
+        ]);
+        updateStepDots(3);
+        showToast('Copied — paste into CareOn freetext');
+        return;
+      } catch (e) {}
+    }
+
+    // Method 2: Plain text clipboard API fallback
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        updateStepDots(3);
+        showToast('Copied — paste into CareOn');
+        return;
+      } catch (e) {}
+    }
+
+    // Method 3: execCommand fallback
+    try {
+      const cb = document.getElementById('copyBox');
+      cb.focus();
+      cb.setSelectionRange(0, cb.value.length);
+      const success = document.execCommand('copy');
+      if (success) {
+        updateStepDots(3);
+        showToast('Copied — paste into CareOn');
+        return;
+      }
+    } catch (e) {}
+
+    // Method 4: Manual fallback
+    const cb = document.getElementById('copyBox');
+    cb.focus();
+    cb.setSelectionRange(0, cb.value.length);
+    showToast('Tap the green box → Select All → Copy', 'warn');
+  }
+
+  function clearAll() {
+    document.getElementById('rawInput').value = '';
+    document.getElementById('noteOutput').value = '';
+    document.getElementById('editBadge').textContent = 'Waiting';
+    document.getElementById('editBadge').className = 'badge badge-warn';
+    updateStats();
+    updateStepDots(1);
+    showToast('Cleared');
+  }
+
+  function clearOutput() {
+    document.getElementById('noteOutput').value = '';
+    updateStats();
+  }
+
+  // Live find count as user types in find box
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'fnrFind') updateFnRCount();
+  });
+</script>
+</body>
+</html>
