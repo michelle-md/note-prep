@@ -485,7 +485,7 @@ async function generateNote(patientId) {
   userContent.push({ type: 'text', text: '\nGenerate the complete final output now: SOAP note, ICD-10 codes block, billing suggestions block, and clinical flags. Process all provided content in one pass. Do not ask questions — flag any missing data at the end.' });
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
