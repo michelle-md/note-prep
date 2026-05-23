@@ -191,6 +191,37 @@
     word-break: break-word; max-height: 520px; overflow-y: auto;
   }
 
+  /* Output action row */
+  .output-action-row {
+    display: flex; gap: 8px; margin-top: 10px;
+  }
+  .btn-soap {
+    flex: 1; padding: 10px; font-size: 13px; font-weight: 500;
+    font-family: inherit; border-radius: 4px; cursor: pointer;
+    border: 1px solid #5C7A6B; background: #EDF3F0; color: #5C7A6B;
+  }
+  .btn-soap:active { background: #d5e8e0; }
+  .btn-iterate {
+    flex: 1; padding: 10px; font-size: 13px; font-weight: 500;
+    font-family: inherit; border-radius: 4px; cursor: pointer;
+    border: 1px solid #9A6B2E; background: #FBF4EA; color: #9A6B2E;
+  }
+  .btn-iterate:active { background: #f0e4cc; }
+
+  /* Iterate area */
+  .iterate-area {
+    background: #FBF4EA; border: 1px solid #9A6B2E;
+    border-radius: 6px; padding: 12px; margin-top: 10px;
+  }
+
+  /* End shift button */
+  .end-shift-btn {
+    background: none; border: 1px solid #8A4A4A; border-radius: 4px;
+    color: #8A4A4A; font-size: 11px; font-weight: 500;
+    font-family: inherit; padding: 3px 8px; cursor: pointer;
+  }
+  .end-shift-btn:active { background: #F7EDED; }
+
   /* Copy toast */
   .copy-toast {
     position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
@@ -344,6 +375,11 @@ let state = {
   elapsedSeconds: 0,
   timerInterval: null,
   pendingText: '',
+  showIterate: false,
+  iterateText: '',
+  syncStatus: 'idle', // idle | saving | saved | error
+  syncError: null,
+  lastSyncAt: null,
 };
 
 function generateId() {
@@ -375,6 +411,121 @@ function getActivePatient() {
 function setState(patch) {
   Object.assign(state, patch);
   render();
+}
+
+// Sync debounce
+let syncTimer = null;
+function scheduleSync() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => saveShift(), 800);
+}
+
+async function saveShift() {
+  state.syncStatus = 'saving';
+  updateSyncIndicator();
+  try {
+    const payload = {
+      shiftName: state.shiftName,
+      patients: state.patients.map(p => ({
+        ...p,
+        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+        generatedAt: p.generatedAt instanceof Date ? p.generatedAt.toISOString() : p.generatedAt,
+        entries: p.entries.map(e => ({
+          ...e,
+          addedAt: e.addedAt instanceof Date ? e.addedAt.toISOString() : e.addedAt,
+        })),
+      })),
+    };
+    const res = await fetch('/api/shift', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Save failed');
+    state.syncStatus = 'saved';
+    state.lastSyncAt = new Date();
+  } catch(e) {
+    state.syncStatus = 'error';
+    state.syncError = e.message;
+  }
+  updateSyncIndicator();
+}
+
+async function loadShift() {
+  try {
+    const res = await fetch('/api/shift');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.patients && data.patients.length > 0) {
+      // Rehydrate dates
+      state.shiftName = data.shiftName || state.shiftName;
+      state.patients = data.patients.map(p => ({
+        ...p,
+        createdAt: new Date(p.createdAt),
+        generatedAt: p.generatedAt ? new Date(p.generatedAt) : null,
+        entries: p.entries.map(e => ({
+          ...e,
+          addedAt: new Date(e.addedAt),
+        })),
+      }));
+      render();
+    }
+  } catch(e) {
+    // Silent fail on load — start fresh
+  }
+}
+
+async function endShift() {
+  if (!confirm('End shift and clear all patient data? This cannot be undone.')) return;
+  try {
+    await fetch('/api/shift', { method: 'DELETE' });
+  } catch(e) {}
+  state.patients = [];
+  state.activePatientId = null;
+  state.view = 'shift';
+  state.showAddPatient = false;
+  state.syncStatus = 'idle';
+  state.lastSyncAt = null;
+  render();
+}
+
+function updateSyncIndicator() {
+  const el = document.getElementById('syncIndicator');
+  if (!el) return;
+  if (state.syncStatus === 'saving') {
+    el.textContent = 'Saving...';
+    el.style.color = '#9A6B2E';
+  } else if (state.syncStatus === 'saved') {
+    el.textContent = 'Synced ' + (state.lastSyncAt ? formatTime(state.lastSyncAt) : '');
+    el.style.color = '#5C7A6B';
+  } else if (state.syncStatus === 'error') {
+    el.textContent = 'Sync failed';
+    el.style.color = '#8A4A4A';
+  } else {
+    el.textContent = '';
+  }
+}
+
+function copySoap(soapText) {
+  copyText(soapText);
+}
+
+function handleIterateImages(files, patientId) {
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => addImageEntry(patientId, ev.target.result, file.name);
+    reader.readAsDataURL(file);
+  });
+}
+
+function addIterateAndRegenerate(patientId) {
+  const text = state.iterateText;
+  if (text && text.trim()) {
+    addTextEntry(patientId, '[ITERATION] ' + text.trim());
+  }
+  state.showIterate = false;
+  state.iterateText = '';
+  generateNote(patientId);
 }
 
 function showCopyToast() {
@@ -416,6 +567,7 @@ function addPatient() {
   };
   state.patients.push(patient);
   setState({ activePatientId: patient.id, view: 'patient', showAddPatient: false, newPatientLabel: '', pendingText: '' });
+  scheduleSync();
 }
 
 function deleteEntry(patientId, entryId) {
@@ -423,6 +575,7 @@ function deleteEntry(patientId, entryId) {
   if (!p) return;
   p.entries = p.entries.filter(e => e.id !== entryId);
   render();
+  scheduleSync();
 }
 
 function addTextEntry(patientId, text) {
@@ -431,6 +584,7 @@ function addTextEntry(patientId, text) {
   if (!p) return;
   p.entries.push({ id: generateId(), type: 'text', content: text, addedAt: new Date() });
   setState({ pendingText: '' });
+  scheduleSync();
 }
 
 function addImageEntry(patientId, dataUrl, filename) {
@@ -438,6 +592,7 @@ function addImageEntry(patientId, dataUrl, filename) {
   if (!p) return;
   p.entries.push({ id: generateId(), type: 'image', content: dataUrl, filename, addedAt: new Date() });
   render();
+  scheduleSync();
 }
 
 function handleImageFiles(files) {
@@ -505,6 +660,7 @@ async function generateNote(patientId) {
     state.isGenerating = false;
     clearInterval(state.timerInterval);
     render();
+    scheduleSync();
   } catch(err) {
     state.isGenerating = false;
     state.generateError = err.message || 'Generation failed. Check your connection and try again.';
@@ -628,6 +784,22 @@ function renderPatientView() {
 
   let outputSection = '';
   if (patient.generatedOutput) {
+    const soapOnly = patient.generatedOutput.split('---')[0].trim();
+    const iterateArea = state.showIterate ? `
+      <div class="iterate-area">
+        <div class="add-entry-hint">Add more information to update the note</div>
+        <textarea id="iterateText" placeholder="Add vital signs, new findings, updated results..."
+          oninput="state.iterateText=this.value">${esc(state.iterateText||'')}</textarea>
+        <div class="action-row">
+          <button class="btn-small-primary" onclick="addIterateAndRegenerate('${patient.id}')">Update note</button>
+          <button class="btn-small-secondary" onclick="document.getElementById('iterateImageInput').click()">Add image</button>
+        </div>
+        <input type="file" id="iterateImageInput"
+          accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,application/pdf"
+          multiple style="display:none"
+          onchange="handleIterateImages(this.files,'${patient.id}');this.value=''">
+      </div>` : '';
+
     outputSection = `
       <div class="output-section">
         <div class="output-header">
@@ -635,6 +807,13 @@ function renderPatientView() {
           <button class="copy-btn" onclick="copyText(${JSON.stringify(patient.generatedOutput)})">Copy all</button>
         </div>
         <div class="output-box">${esc(patient.generatedOutput)}</div>
+        <div class="output-action-row">
+          <button class="btn-soap" onclick="copySoap(${JSON.stringify(soapOnly)})">Copy SOAP note</button>
+          <button class="btn-iterate" onclick="setState({showIterate:!state.showIterate, iterateText:''})">
+            ${state.showIterate ? 'Cancel' : 'Iterate note'}
+          </button>
+        </div>
+        ${iterateArea}
       </div>`;
   }
 
@@ -667,7 +846,11 @@ function renderHeader() {
           <div class="app-title">ED Shift Clipboard</div>
           <div class="shift-label">${esc(state.shiftName)}</div>
         </div>
-        <div class="header-time" id="headerTime">${formatTime(new Date())}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <div class="header-time" id="headerTime">${formatTime(new Date())}</div>
+          <span id="syncIndicator" style="font-size:11px;font-family:monospace;"></span>
+          ${state.patients.length > 0 ? '<button class="end-shift-btn" onclick="endShift()">End shift</button>' : ''}
+        </div>
       </div>
     </div>`;
 }
@@ -698,8 +881,9 @@ setInterval(() => {
   if (el) el.textContent = formatTime(new Date());
 }, 60000);
 
-// Initial render
+// Initial render + load persisted shift
 render();
+loadShift();
 </script>
 </body>
 </html>

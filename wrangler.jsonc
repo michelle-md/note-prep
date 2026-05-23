@@ -11,5 +11,11 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SHIFT_STORE",
+      "id": "5785d0e2986f48bbb9cb20e6153af460"
+    }
   ]
 }
