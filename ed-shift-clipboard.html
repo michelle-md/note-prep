@@ -506,8 +506,11 @@ function updateSyncIndicator() {
   }
 }
 
-function copySoap(soapText) {
-  copyText(soapText);
+function copySoap(patientId) {
+  const patient = state.patients.find(p => p.id === patientId);
+  if (!patient || !patient.generatedOutput) return;
+  const soapOnly = patient.generatedOutput.split('\n---')[0].trim();
+  copyText(soapOnly);
 }
 
 function handleIterateImages(files, patientId) {
@@ -784,7 +787,6 @@ function renderPatientView() {
 
   let outputSection = '';
   if (patient.generatedOutput) {
-    const soapOnly = patient.generatedOutput.split('---')[0].trim();
     const iterateArea = state.showIterate ? `
       <div class="iterate-area">
         <div class="add-entry-hint">Add more information to update the note</div>
@@ -808,7 +810,7 @@ function renderPatientView() {
         </div>
         <div class="output-box">${esc(patient.generatedOutput)}</div>
         <div class="output-action-row">
-          <button class="btn-soap" onclick="copySoap(${JSON.stringify(soapOnly)})">Copy SOAP note</button>
+          <button class="btn-soap" onclick="copySoap('${patient.id}')">Copy SOAP note</button>
           <button class="btn-iterate" onclick="setState({showIterate:!state.showIterate, iterateText:''})">
             ${state.showIterate ? 'Cancel' : 'Iterate note'}
           </button>
