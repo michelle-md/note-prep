@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#3B6B8A">
+<title>ED Shift Clipboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #F7F6F3;
+    color: #2C2825;
+    min-height: 100vh;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  #app { min-height: 100vh; }
+
+  /* Header */
+  .header {
+    background: #fff;
+    border-bottom: 1px solid #E2DDD8;
+    padding: 12px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-row { display: flex; justify-content: space-between; align-items: center; }
+  .app-title { font-size: 16px; font-weight: 600; color: #2C2825; }
+  .shift-label { font-size: 12px; color: #7A736C; margin-top: 2px; }
+  .header-time { font-family: monospace; font-size: 13px; color: #7A736C; }
+  .back-btn {
+    background: none; border: none; color: #3B6B8A;
+    font-size: 14px; cursor: pointer; padding: 4px 0;
+    font-family: inherit;
+  }
+  .header-spacer { width: 48px; }
+  .header-patient-label { font-size: 15px; font-weight: 600; color: #2C2825; }
+
+  /* Content */
+  .content { padding: 16px; padding-bottom: 100px; }
+
+  /* Patient count */
+  .patient-count { font-size: 12px; color: #7A736C; margin-bottom: 12px; }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 48px 0; color: #7A736C; font-size: 14px; }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-sub { font-size: 12px; margin-top: 6px; }
+
+  /* Add patient form */
+  .add-patient-form {
+    background: #fff; border: 1px solid #E2DDD8;
+    border-radius: 6px; padding: 14px; margin-bottom: 12px;
+  }
+  .form-label { font-size: 13px; color: #7A736C; margin-bottom: 8px; }
+
+  /* Inputs */
+  input[type="text"], textarea {
+    width: 100%; border: 1px solid #E2DDD8; border-radius: 4px;
+    padding: 10px 12px; font-size: 14px; font-family: inherit;
+    color: #2C2825; background: #fff; outline: none;
+  }
+  input[type="text"]:focus, textarea:focus { border-color: #3B6B8A; }
+  textarea { font-family: monospace; font-size: 13px; resize: vertical; min-height: 80px; line-height: 1.5; }
+
+  /* Buttons */
+  .btn-primary {
+    background: #3B6B8A; color: #fff; border: none;
+    border-radius: 4px; padding: 11px 18px; font-size: 14px;
+    font-weight: 500; font-family: inherit; cursor: pointer;
+    width: 100%; margin-top: 8px; display: block;
+  }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary {
+    background: #fff; color: #3B6B8A; border: 1px solid #3B6B8A;
+    border-radius: 4px; padding: 11px 18px; font-size: 14px;
+    font-weight: 500; font-family: inherit; cursor: pointer;
+    width: 100%; margin-top: 8px; display: block;
+  }
+  .btn-small-primary {
+    flex: 1; padding: 10px; font-size: 13px; font-weight: 500;
+    font-family: inherit; border-radius: 4px; cursor: pointer;
+    border: none; background: #3B6B8A; color: #fff;
+  }
+  .btn-small-secondary {
+    flex: 1; padding: 10px; font-size: 13px; font-weight: 500;
+    font-family: inherit; border-radius: 4px; cursor: pointer;
+    border: 1px solid #3B6B8A; background: #fff; color: #3B6B8A;
+  }
+  .action-row { display: flex; gap: 8px; margin-top: 8px; }
+
+  /* Patient cards */
+  .patient-card {
+    background: #fff; border: 1px solid #E2DDD8;
+    border-radius: 6px; margin-bottom: 8px; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 14px;
+  }
+  .patient-card:active { background: #F0EDE8; }
+  .patient-label { font-size: 14px; font-weight: 600; color: #2C2825; }
+  .patient-meta { font-size: 12px; color: #7A736C; margin-top: 2px; }
+  .status-pill-ready {
+    font-size: 11px; font-weight: 500; padding: 3px 8px;
+    border-radius: 4px; background: #EDF3F0; color: #5C7A6B; white-space: nowrap;
+  }
+  .status-pill-progress {
+    font-size: 11px; font-weight: 500; padding: 3px 8px;
+    border-radius: 4px; background: #F0EDE8; color: #7A736C; white-space: nowrap;
+  }
+
+  /* FAB */
+  .fab {
+    position: fixed; bottom: 24px; right: 24px;
+    width: 56px; height: 56px; border-radius: 28px;
+    background: #3B6B8A; color: #fff; border: none;
+    font-size: 28px; display: flex; align-items: center;
+    justify-content: center; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 200;
+    line-height: 1;
+  }
+
+  /* Section labels */
+  .section-label {
+    font-size: 11px; font-weight: 600; color: #7A736C;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 8px; margin-top: 20px;
+  }
+
+  /* Entry cards */
+  .entry-card {
+    background: #fff; border: 1px solid #E2DDD8;
+    border-radius: 6px; margin-bottom: 8px; overflow: hidden;
+  }
+  .entry-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; border-bottom: 1px solid #E2DDD8;
+    background: #F0EDE8;
+  }
+  .entry-timestamp { font-size: 11px; color: #7A736C; font-family: monospace; }
+  .delete-btn {
+    background: none; border: none; color: #B5AFA9;
+    cursor: pointer; font-size: 18px; padding: 0 4px; line-height: 1;
+  }
+  .entry-text {
+    padding: 10px 12px; font-size: 13px; color: #2C2825;
+    font-family: monospace; line-height: 1.5; white-space: pre-wrap;
+    word-break: break-word; max-height: 120px; overflow: hidden;
+  }
+  .entry-image { width: 100%; display: block; max-height: 220px; object-fit: contain; background: #F0EDE8; }
+
+  /* Add entry area */
+  .add-entry-area {
+    background: #fff; border: 1px solid #E2DDD8;
+    border-radius: 6px; padding: 12px; margin-top: 8px;
+  }
+  .add-entry-hint { font-size: 12px; color: #7A736C; margin-bottom: 6px; }
+
+  /* Generate section */
+  .generate-section { margin-top: 24px; border-top: 1px solid #E2DDD8; padding-top: 16px; }
+  .generating-indicator {
+    background: #EBF2F7; border: 1px solid #3B6B8A;
+    border-radius: 6px; padding: 12px 14px; font-size: 13px;
+    color: #3B6B8A; display: flex; justify-content: space-between; align-items: center;
+  }
+  .generating-timer { font-family: monospace; font-weight: 600; }
+  .error-box {
+    background: #F7EDED; border: 1px solid #8A4A4A;
+    border-radius: 6px; padding: 10px 12px; font-size: 13px;
+    color: #8A4A4A; margin-top: 8px;
+  }
+
+  /* Output */
+  .output-section { margin-top: 16px; }
+  .output-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .output-meta { font-size: 11px; color: #7A736C; font-family: monospace; }
+  .copy-btn {
+    background: #fff; border: 1px solid #3B6B8A; border-radius: 4px;
+    padding: 6px 14px; font-size: 12px; font-weight: 500;
+    color: #3B6B8A; cursor: pointer; font-family: inherit;
+  }
+  .copy-btn:active { background: #EBF2F7; }
+  .output-box {
+    background: #fff; border: 1px solid #E2DDD8; border-radius: 6px;
+    padding: 12px 14px; font-size: 13px; font-family: monospace;
+    color: #2C2825; line-height: 1.6; white-space: pre-wrap;
+    word-break: break-word; max-height: 520px; overflow-y: auto;
+  }
+
+  /* Copy toast */
+  .copy-toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    background: #2C2825; color: #fff; padding: 8px 18px;
+    border-radius: 20px; font-size: 13px; z-index: 300;
+    opacity: 0; transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  .copy-toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="copy-toast" id="copyToast">Copied to clipboard</div>
+
+<script>
+const SYSTEM_PROMPT = `You are a South African emergency medicine physician assistant generating clinical documentation. Apply all rules below without exception.
+
+ABSOLUTE FORMATTING RULES:
+- Plain text only — no bold, italic, underline, or markdown formatting in note body
+- No headers or heading markers anywhere in the note body
+- No arrow symbols of any kind
+- No bullet points or numbered lists except in the Plan section
+- No non-standard symbols, special characters, or Unicode characters
+- No em dashes, en dashes, or decorative punctuation
+- No tables in the note body
+- All heading labels followed immediately by content on the same line
+- Single line break between items. No blank lines anywhere in the note body except between SOAP note and ICD-10 block
+- ICD-10 codes and billing codes are always separate outputs — never in the note body
+- Note reads as written by the treating clinician
+
+OMISSION RULES:
+- Shock Index: omit entirely if BP not recorded
+- Allergies: omit entirely if not mentioned
+- Alcohol/cigarettes/drug use: omit entirely if not mentioned
+- Surgical history: omit entirely if not mentioned
+- These fields appear only when clinician explicitly provides them
+
+PIPE-SEPARATED FORMAT for inline lists:
+Medical conditions: DM | HPT | Dyslipidaemia
+Medications: Amlodipine 5mg | Metformin 850mg
+
+SHOCK INDEX: Calculate automatically as SI = HR divided by SBP. Flag as [ELEVATED] if greater than 1.0.
+
+CRITICAL VALUE FORMAT: [CRITICAL: value and unit as reported on source document]
+
+NEVER fabricate, infer, or estimate any clinical value not explicitly provided.
+
+NOTE GENERATION WORKFLOW:
+- Generate the note immediately from information provided
+- Do not ask clarifying questions before generating
+- Process all provided content in one pass
+- Flag missing or ambiguous data at the END as clinical flags — never block generation with questions
+- Exception: only ask if a value is internally contradictory or clinically unsafe
+
+NEW PATIENT SOAP NOTE FORMAT:
+
+[Age]-year-old [sex]
+Presented from [home / GP / with EMS / with HEMS]
+
+SUBJECTIVE
+Presenting complaint: [content on same line]
+Medical conditions: [pipe-separated — omit if none]
+Medications: [pipe-separated with doses — omit if none]
+
+OBJECTIVE
+Vitals: HR [x] | BP [x/x] | RR [x] | Temp [x] | SpO2 [x]% [RA or O2] | SI [calculated]
+General appearance: [one line]
+[Relevant systems only: CNS / CVS / RESP / ABDO / MSK]
+
+SPECIAL INVESTIGATIONS
+[ECG then Radiology then Blood results then Urine — include only what was documented]
+
+TREATMENT IN THE ED
+[Each treatment item on its own line — ED-administered only]
+
+ASSESSMENT
+[Age]-year-old [sex] with [background comorbidities]
+Now p/w: [primary diagnosis]
+Differentials: [list without explanations]
+[Clinical decision tool if triggered: name, score, interpretation]
+
+PLAN
+1. [explicit plan items only — do not infer or add]
+
+CLINICAL DECISION TOOLS — auto-calculate when triggered:
+- Chest pain: HEART Score (H+E+A+R+T scored 0-10, risk stratification)
+- Stroke/neurological deficit: NIHSS
+- Pneumonia: CURB-65
+- Unilateral leg swelling: Wells DVT
+- Suspected PE: Wells PE
+- Upper GI bleed: Glasgow-Blatchford
+- Paediatric head injury: PECARN
+
+PAEDIATRIC RULES (apply when patient under 18):
+- Add BBF (brought by father) or BBM (brought by mother) on header line 3
+- Delete alcohol/cigarettes/drug use section entirely
+- If weight under 40kg, add dosing table at bottom:
+  Paediatric weight-based dosing ([weight] kg):
+  Paracetamol: [weight x 0.625] ml
+  Nurofen (Ibuprofen): [weight x 0.5] ml
+  Aspelone (Prednisolone): [weight / 6] ml
+  Augmentin (Amoxicillin-clavulanate): [weight x 0.375] ml
+  Zithromax (Azithromycin): [0.25 x weight] ml
+
+ICD-10 CODING:
+- Suggest codes based only on documented and confirmed diagnoses
+- Code primary diagnosis first, then secondary and comorbidities
+- Never code suspected or differential diagnoses
+
+ICD-10 OUTPUT FORMAT (separate from note body):
+ICD-10 codes — separate output (do not paste into CareOn journal body)
+[Code]   [Description]
+Prometheus format (space-separated): [Code] [Code]
+CareOn ED Notes tab — primary code: [Code]
+
+BILLING CODES:
+0190 — Emergency consultation — required for all ED encounters
+1230 — ECG interpretation — when ECG performed and interpreted
+7062 — Basic emergency procedure — single area imaging only, no IV treatment
+7063 — Resuscitation/complex — ANY IV medication, IV fluids, nebulised treatment, multi-area imaging, or complex procedure
+7064 — Critical care/monitoring — time-based, continuous monitoring, critical care interventions
+
+7062 vs 7063 rule: Single area X-ray only, no IV or nebulised treatment = 7062. Any IV or nebulised treatment, or more than one imaging area = 7063.
+
+BILLING OUTPUT FORMAT:
+Billing suggestions — clinician confirmation required before submission
+Code     Description                         Basis
+0190     Emergency consultation              All ED encounters
+[additional codes with basis]
+
+FINAL OUTPUT STRUCTURE:
+[SOAP note]
+---
+[ICD-10 codes block]
+---
+[Billing suggestions block]
+[Clinical flags — missing data, drug interactions, incidental findings]`;
+
+// State
+let state = {
+  shiftName: '',
+  shiftDate: new Date(),
+  patients: [],
+  activePatientId: null,
+  view: 'shift',
+  showAddPatient: false,
+  newPatientLabel: '',
+  isGenerating: false,
+  generateError: null,
+  elapsedSeconds: 0,
+  timerInterval: null,
+  pendingText: '',
+};
+
+function generateId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function formatDate(d) {
+  return d.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatTime(d) {
+  return d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+state.shiftName = formatDate(state.shiftDate);
+
+function getActivePatient() {
+  return state.patients.find(p => p.id === state.activePatientId);
+}
+
+function setState(patch) {
+  Object.assign(state, patch);
+  render();
+}
+
+function showCopyToast() {
+  const t = document.getElementById('copyToast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopyToast).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); showCopyToast(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function addPatient() {
+  const label = state.newPatientLabel.trim();
+  if (!label) return;
+  const patient = {
+    id: generateId(),
+    label,
+    createdAt: new Date(),
+    entries: [],
+    generatedOutput: null,
+    generatedAt: null,
+  };
+  state.patients.push(patient);
+  setState({ activePatientId: patient.id, view: 'patient', showAddPatient: false, newPatientLabel: '', pendingText: '' });
+}
+
+function deleteEntry(patientId, entryId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  p.entries = p.entries.filter(e => e.id !== entryId);
+  render();
+}
+
+function addTextEntry(patientId, text) {
+  if (!text.trim()) return;
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  p.entries.push({ id: generateId(), type: 'text', content: text, addedAt: new Date() });
+  setState({ pendingText: '' });
+}
+
+function addImageEntry(patientId, dataUrl, filename) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  p.entries.push({ id: generateId(), type: 'image', content: dataUrl, filename, addedAt: new Date() });
+  render();
+}
+
+function handleImageFiles(files) {
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => addImageEntry(state.activePatientId, ev.target.result, file.name);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function generateNote(patientId) {
+  const patient = state.patients.find(p => p.id === patientId);
+  if (!patient || patient.entries.length === 0) return;
+
+  state.isGenerating = true;
+  state.generateError = null;
+  state.elapsedSeconds = 0;
+  render();
+
+  state.timerInterval = setInterval(() => {
+    state.elapsedSeconds++;
+    const el = document.getElementById('elapsed-timer');
+    if (el) el.textContent = state.elapsedSeconds + 's';
+  }, 1000);
+
+  const userContent = [];
+  const textEntries = patient.entries.filter(e => e.type === 'text');
+  const imageEntries = patient.entries.filter(e => e.type === 'image');
+
+  if (textEntries.length > 0) {
+    const combined = textEntries
+      .map((e, i) => `[Note ${i+1} — added ${formatTime(e.addedAt)}]\n${e.content}`)
+      .join('\n\n');
+    userContent.push({ type: 'text', text: `Patient: ${patient.label}\nShift: ${state.shiftName}\n\nCLINICAL NOTES:\n${combined}` });
+  }
+
+  imageEntries.forEach((e, i) => {
+    const parts = e.content.split(',');
+    const mediaType = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const base64 = parts[1];
+    userContent.push({ type: 'text', text: `[Image ${i+1}: ${e.filename || 'uploaded image'}]` });
+    userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
+  });
+
+  userContent.push({ type: 'text', text: '\nGenerate the complete final output now: SOAP note, ICD-10 codes block, billing suggestions block, and clinical flags. Process all provided content in one pass. Do not ask questions — flag any missing data at the end.' });
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userContent }],
+      }),
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const output = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    patient.generatedOutput = output;
+    patient.generatedAt = new Date();
+    state.isGenerating = false;
+    clearInterval(state.timerInterval);
+    render();
+  } catch(err) {
+    state.isGenerating = false;
+    state.generateError = err.message || 'Generation failed. Check your connection and try again.';
+    clearInterval(state.timerInterval);
+    render();
+  }
+}
+
+function renderShiftView() {
+  const patients = state.patients;
+  let patientCards = '';
+  patients.forEach(p => {
+    const pill = p.generatedOutput
+      ? `<span class="status-pill-ready">Note ready</span>`
+      : `<span class="status-pill-progress">In progress</span>`;
+    patientCards += `
+      <div class="patient-card" onclick="openPatient('${p.id}')">
+        <div>
+          <div class="patient-label">${esc(p.label)}</div>
+          <div class="patient-meta">${p.entries.length} item${p.entries.length !== 1 ? 's' : ''} · Added ${formatTime(p.createdAt)}</div>
+        </div>
+        ${pill}
+      </div>`;
+  });
+
+  const addForm = state.showAddPatient ? `
+    <div class="add-patient-form">
+      <div class="form-label">Patient identifier (initials or number)</div>
+      <input type="text" id="newPatientInput" placeholder="e.g. JM, 01, 58M chest pain"
+        value="${esc(state.newPatientLabel)}"
+        oninput="state.newPatientLabel=this.value"
+        onkeydown="if(event.key==='Enter')addPatient()">
+      <button class="btn-primary" onclick="addPatient()">Create patient card</button>
+      <button class="btn-secondary" onclick="setState({showAddPatient:false,newPatientLabel:''})">Cancel</button>
+    </div>` : '';
+
+  const empty = patients.length === 0 && !state.showAddPatient ? `
+    <div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <div>No patients yet</div>
+      <div class="empty-sub">Tap + to add your first patient</div>
+    </div>` : '';
+
+  const fab = !state.showAddPatient ? `<button class="fab" onclick="setState({showAddPatient:true})">+</button>` : '';
+
+  return `
+    <div class="content">
+      ${patients.length > 0 ? `<div class="patient-count">${patients.length} patient${patients.length !== 1 ? 's' : ''} this shift</div>` : ''}
+      ${addForm}
+      ${empty}
+      ${patientCards}
+    </div>
+    ${fab}`;
+}
+
+function renderPatientView() {
+  const patient = getActivePatient();
+  if (!patient) return '';
+
+  const textEntries = patient.entries.filter(e => e.type === 'text');
+  const imageEntries = patient.entries.filter(e => e.type === 'image');
+
+  let textSection = '';
+  if (textEntries.length > 0) {
+    let cards = textEntries.map(e => `
+      <div class="entry-card">
+        <div class="entry-header">
+          <span class="entry-timestamp">Text · ${formatTime(e.addedAt)}</span>
+          <button class="delete-btn" onclick="deleteEntry('${patient.id}','${e.id}')">×</button>
+        </div>
+        <div class="entry-text">${esc(e.content)}</div>
+      </div>`).join('');
+    textSection = `<div class="section-label">Clinical notes (${textEntries.length})</div>${cards}`;
+  }
+
+  let imageSection = '';
+  if (imageEntries.length > 0) {
+    let cards = imageEntries.map(e => `
+      <div class="entry-card">
+        <div class="entry-header">
+          <span class="entry-timestamp">Image · ${esc(e.filename || 'photo')} · ${formatTime(e.addedAt)}</span>
+          <button class="delete-btn" onclick="deleteEntry('${patient.id}','${e.id}')">×</button>
+        </div>
+        <img src="${e.content}" alt="${esc(e.filename || 'image')}" class="entry-image">
+      </div>`).join('');
+    imageSection = `<div class="section-label">Images (${imageEntries.length})</div>${cards}`;
+  }
+
+  const addArea = `
+    <div class="add-entry-area">
+      <div class="add-entry-hint">Paste or type clinical notes, transcripts, results</div>
+      <textarea id="pendingText" placeholder="Paste voice transcript, type findings, or add results here..."
+        oninput="state.pendingText=this.value">${esc(state.pendingText)}</textarea>
+      <div class="action-row">
+        <button class="btn-small-primary" onclick="addNoteFromInput()">Add note</button>
+        <button class="btn-small-secondary" onclick="document.getElementById('imageInput').click()">Add image</button>
+      </div>
+      <input type="file" id="imageInput"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,application/pdf"
+        multiple style="display:none"
+        onchange="handleImageFiles(this.files);this.value=''">
+    </div>`;
+
+  let generateArea = '';
+  if (state.isGenerating) {
+    generateArea = `
+      <div class="generate-section">
+        <div class="generating-indicator">
+          <span>Generating note...</span>
+          <span class="generating-timer" id="elapsed-timer">${state.elapsedSeconds}s</span>
+        </div>
+      </div>`;
+  } else {
+    const disabled = patient.entries.length === 0 ? 'disabled' : '';
+    generateArea = `
+      <div class="generate-section">
+        <button class="btn-primary" ${disabled} onclick="generateNote('${patient.id}')">Generate note</button>
+        ${state.generateError ? `<div class="error-box">${esc(state.generateError)}</div>` : ''}
+      </div>`;
+  }
+
+  let outputSection = '';
+  if (patient.generatedOutput) {
+    outputSection = `
+      <div class="output-section">
+        <div class="output-header">
+          <div class="output-meta">Generated ${patient.generatedAt ? formatTime(patient.generatedAt) : ''}</div>
+          <button class="copy-btn" onclick="copyText(${JSON.stringify(patient.generatedOutput)})">Copy all</button>
+        </div>
+        <div class="output-box">${esc(patient.generatedOutput)}</div>
+      </div>`;
+  }
+
+  return `
+    <div class="content">
+      ${textSection}
+      ${imageSection}
+      ${addArea}
+      ${generateArea}
+      ${outputSection}
+    </div>`;
+}
+
+function renderHeader() {
+  if (state.view === 'patient') {
+    const p = getActivePatient();
+    return `
+      <div class="header">
+        <div class="header-row">
+          <button class="back-btn" onclick="setState({view:'shift'})">← Shift</button>
+          <span class="header-patient-label">${p ? esc(p.label) : 'Patient'}</span>
+          <span class="header-spacer"></span>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="header">
+      <div class="header-row">
+        <div>
+          <div class="app-title">ED Shift Clipboard</div>
+          <div class="shift-label">${esc(state.shiftName)}</div>
+        </div>
+        <div class="header-time" id="headerTime">${formatTime(new Date())}</div>
+      </div>
+    </div>`;
+}
+
+function render() {
+  const app = document.getElementById('app');
+  const body = state.view === 'shift' ? renderShiftView() : renderPatientView();
+  app.innerHTML = renderHeader() + body;
+
+  // Focus new patient input if visible
+  const inp = document.getElementById('newPatientInput');
+  if (inp && document.activeElement !== inp) inp.focus();
+}
+
+function openPatient(id) {
+  setState({ activePatientId: id, view: 'patient', pendingText: '', generateError: null });
+}
+
+function addNoteFromInput() {
+  const text = state.pendingText;
+  if (!text.trim()) return;
+  addTextEntry(state.activePatientId, text);
+}
+
+// Update header clock every minute
+setInterval(() => {
+  const el = document.getElementById('headerTime');
+  if (el) el.textContent = formatTime(new Date());
+}, 60000);
+
+// Initial render
+render();
+</script>
+</body>
+</html>
