@@ -413,42 +413,81 @@ function setState(patch) {
   render();
 }
 
-// Sync debounce
-let syncTimer = null;
-function scheduleSync() {
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => saveShift(), 800);
+// Per-patient sync timers
+const patientSyncTimers = {};
+
+function scheduleSync(patientId) {
+  clearTimeout(patientSyncTimers[patientId]);
+  patientSyncTimers[patientId] = setTimeout(() => savePatient(patientId), 600);
 }
 
-async function saveShift() {
-  state.syncStatus = 'saving';
-  updateSyncIndicator();
+function serializePatient(p) {
+  return JSON.stringify({
+    ...p,
+    createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+    generatedAt: p.generatedAt instanceof Date ? p.generatedAt.toISOString() : p.generatedAt,
+    entries: p.entries.map(e => ({
+      ...e,
+      addedAt: e.addedAt instanceof Date ? e.addedAt.toISOString() : e.addedAt,
+    })),
+  });
+}
+
+async function saveIndex() {
   try {
-    const payload = {
+    const index = {
       shiftName: state.shiftName,
-      patients: state.patients.map(p => ({
-        ...p,
-        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
-        generatedAt: p.generatedAt instanceof Date ? p.generatedAt.toISOString() : p.generatedAt,
-        entries: p.entries.map(e => ({
-          ...e,
-          addedAt: e.addedAt instanceof Date ? e.addedAt.toISOString() : e.addedAt,
-        })),
-      })),
+      patientIds: state.patients.map(p => p.id),
+      updatedAt: new Date().toISOString(),
     };
-    const res = await fetch('/api/shift', {
+    await fetch('/api/shift/index', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(index),
+    });
+  } catch(e) {}
+}
+
+async function savePatient(patientId) {
+  const patient = state.patients.find(p => p.id === patientId);
+  if (!patient) return;
+
+  // Mark as saving on the card
+  patient.syncStatus = 'saving';
+  updatePatientSyncBadge(patientId, 'saving');
+
+  try {
+    const res = await fetch('/api/patient/' + patientId, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: serializePatient(patient),
     });
     if (!res.ok) throw new Error('Save failed');
-    state.syncStatus = 'saved';
-    state.lastSyncAt = new Date();
+    patient.syncStatus = 'saved';
+    patient.lastSyncAt = new Date();
+    updatePatientSyncBadge(patientId, 'saved');
+    // Also update shift index
+    await saveIndex();
   } catch(e) {
-    state.syncStatus = 'error';
-    state.syncError = e.message;
+    patient.syncStatus = 'error';
+    updatePatientSyncBadge(patientId, 'error');
   }
-  updateSyncIndicator();
+}
+
+function updatePatientSyncBadge(patientId, status) {
+  const el = document.getElementById('sync_' + patientId);
+  if (!el) return;
+  if (status === 'saving') {
+    el.textContent = 'Saving...';
+    el.style.color = '#9A6B2E';
+  } else if (status === 'saved') {
+    const p = state.patients.find(p => p.id === patientId);
+    el.textContent = 'Saved ' + (p && p.lastSyncAt ? formatTime(p.lastSyncAt) : '');
+    el.style.color = '#5C7A6B';
+  } else if (status === 'error') {
+    el.textContent = 'Save failed — check signal';
+    el.style.color = '#8A4A4A';
+  }
 }
 
 async function loadShift() {
@@ -457,12 +496,13 @@ async function loadShift() {
     if (!res.ok) return;
     const data = await res.json();
     if (data && data.patients && data.patients.length > 0) {
-      // Rehydrate dates
       state.shiftName = data.shiftName || state.shiftName;
       state.patients = data.patients.map(p => ({
         ...p,
         createdAt: new Date(p.createdAt),
         generatedAt: p.generatedAt ? new Date(p.generatedAt) : null,
+        syncStatus: 'saved',
+        lastSyncAt: new Date(),
         entries: p.entries.map(e => ({
           ...e,
           addedAt: new Date(e.addedAt),
@@ -471,40 +511,21 @@ async function loadShift() {
       render();
     }
   } catch(e) {
-    // Silent fail on load — start fresh
+    // Silent fail — start fresh
   }
 }
 
 async function endShift() {
   if (!confirm('End shift and clear all patient data? This cannot be undone.')) return;
-  try {
-    await fetch('/api/shift', { method: 'DELETE' });
-  } catch(e) {}
+  try { await fetch('/api/shift', { method: 'DELETE' }); } catch(e) {}
   state.patients = [];
   state.activePatientId = null;
   state.view = 'shift';
   state.showAddPatient = false;
-  state.syncStatus = 'idle';
-  state.lastSyncAt = null;
   render();
 }
 
-function updateSyncIndicator() {
-  const el = document.getElementById('syncIndicator');
-  if (!el) return;
-  if (state.syncStatus === 'saving') {
-    el.textContent = 'Saving...';
-    el.style.color = '#9A6B2E';
-  } else if (state.syncStatus === 'saved') {
-    el.textContent = 'Synced ' + (state.lastSyncAt ? formatTime(state.lastSyncAt) : '');
-    el.style.color = '#5C7A6B';
-  } else if (state.syncStatus === 'error') {
-    el.textContent = 'Sync failed';
-    el.style.color = '#8A4A4A';
-  } else {
-    el.textContent = '';
-  }
-}
+function updateSyncIndicator() {}
 
 function copySoap(patientId) {
   const patient = state.patients.find(p => p.id === patientId);
@@ -557,7 +578,7 @@ function fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 
-function addPatient() {
+async function addPatient() {
   const label = state.newPatientLabel.trim();
   if (!label) return;
   const patient = {
@@ -568,9 +589,12 @@ function addPatient() {
     generatedOutput: null,
     generatedAt: null,
   };
+  patient.syncStatus = 'idle';
+  patient.lastSyncAt = null;
   state.patients.push(patient);
   setState({ activePatientId: patient.id, view: 'patient', showAddPatient: false, newPatientLabel: '', pendingText: '' });
-  scheduleSync();
+  await saveIndex();
+  scheduleSync(patient.id);
 }
 
 function deleteEntry(patientId, entryId) {
@@ -578,7 +602,7 @@ function deleteEntry(patientId, entryId) {
   if (!p) return;
   p.entries = p.entries.filter(e => e.id !== entryId);
   render();
-  scheduleSync();
+  scheduleSync(patientId);
 }
 
 function addTextEntry(patientId, text) {
@@ -587,7 +611,7 @@ function addTextEntry(patientId, text) {
   if (!p) return;
   p.entries.push({ id: generateId(), type: 'text', content: text, addedAt: new Date() });
   setState({ pendingText: '' });
-  scheduleSync();
+  scheduleSync(patientId);
 }
 
 function addImageEntry(patientId, dataUrl, filename) {
@@ -595,7 +619,7 @@ function addImageEntry(patientId, dataUrl, filename) {
   if (!p) return;
   p.entries.push({ id: generateId(), type: 'image', content: dataUrl, filename, addedAt: new Date() });
   render();
-  scheduleSync();
+  scheduleSync(patientId);
 }
 
 function handleImageFiles(files) {
@@ -663,10 +687,14 @@ async function generateNote(patientId) {
     state.isGenerating = false;
     clearInterval(state.timerInterval);
     render();
-    scheduleSync();
+    scheduleSync(patientId);
   } catch(err) {
     state.isGenerating = false;
-    state.generateError = err.message || 'Generation failed. Check your connection and try again.';
+    let errMsg = err.message || 'Generation failed';
+    if (errMsg.includes('DOCTYPE') || errMsg.includes('JSON') || errMsg.includes('fetch')) {
+      errMsg = 'Network error — you may be on hospital WiFi. Switch to mobile data and try again.';
+    }
+    state.generateError = errMsg;
     clearInterval(state.timerInterval);
     render();
   }
@@ -679,11 +707,17 @@ function renderShiftView() {
     const pill = p.generatedOutput
       ? `<span class="status-pill-ready">Note ready</span>`
       : `<span class="status-pill-progress">In progress</span>`;
+    let syncColor = '#7A736C';
+    let syncText = '';
+    if (p.syncStatus === 'saving') { syncText = 'Saving...'; syncColor = '#9A6B2E'; }
+    else if (p.syncStatus === 'saved' && p.lastSyncAt) { syncText = 'Saved ' + formatTime(p.lastSyncAt); syncColor = '#5C7A6B'; }
+    else if (p.syncStatus === 'error') { syncText = 'Save failed — check signal'; syncColor = '#8A4A4A'; }
     patientCards += `
       <div class="patient-card" onclick="openPatient('${p.id}')">
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="patient-label">${esc(p.label)}</div>
           <div class="patient-meta">${p.entries.length} item${p.entries.length !== 1 ? 's' : ''} · Added ${formatTime(p.createdAt)}</div>
+          <div id="sync_${p.id}" style="font-size:11px;font-family:monospace;color:${syncColor};margin-top:2px">${syncText}</div>
         </div>
         ${pill}
       </div>`;
@@ -837,7 +871,9 @@ function renderHeader() {
         <div class="header-row">
           <button class="back-btn" onclick="setState({view:'shift'})">← Shift</button>
           <span class="header-patient-label">${p ? esc(p.label) : 'Patient'}</span>
-          <span class="header-spacer"></span>
+          <span style="font-size:11px;font-family:monospace;color:#5C7A6B;width:48px;text-align:right" id="sync_header_${p ? p.id : ''}">
+            ${p && p.syncStatus === 'saved' && p.lastSyncAt ? 'Saved ' + formatTime(p.lastSyncAt) : p && p.syncStatus === 'error' ? 'Save failed' : p && p.syncStatus === 'saving' ? 'Saving...' : ''}
+          </span>
         </div>
       </div>`;
   }
@@ -850,7 +886,6 @@ function renderHeader() {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
           <div class="header-time" id="headerTime">${formatTime(new Date())}</div>
-          <span id="syncIndicator" style="font-size:11px;font-family:monospace;"></span>
           ${state.patients.length > 0 ? '<button class="end-shift-btn" onclick="endShift()">End shift</button>' : ''}
         </div>
       </div>
