@@ -434,18 +434,33 @@ function serializePatient(p) {
 }
 
 async function saveIndex() {
-  try {
-    const index = {
-      shiftName: state.shiftName,
-      patientIds: state.patients.map(p => p.id),
-      updatedAt: new Date().toISOString(),
-    };
-    await fetch('/api/shift/index', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(index),
-    });
-  } catch(e) {}
+  const index = {
+    shiftName: state.shiftName,
+    patientIds: state.patients.map(p => p.id),
+    updatedAt: new Date().toISOString(),
+  };
+  // Retry up to 3 times
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('/api/shift/index', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(index),
+      });
+      if (res.ok) return true;
+    } catch(e) {
+      if (attempt === 2) return false;
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  return false;
+}
+
+// Schedule index save separately with its own debounce
+let indexSyncTimer = null;
+function scheduleIndexSync() {
+  clearTimeout(indexSyncTimer);
+  indexSyncTimer = setTimeout(() => saveIndex(), 400);
 }
 
 async function savePatient(patientId) {
@@ -466,8 +481,8 @@ async function savePatient(patientId) {
     patient.syncStatus = 'saved';
     patient.lastSyncAt = new Date();
     updatePatientSyncBadge(patientId, 'saved');
-    // Also update shift index
-    await saveIndex();
+    // Schedule index update
+    scheduleIndexSync();
   } catch(e) {
     patient.syncStatus = 'error';
     updatePatientSyncBadge(patientId, 'error');
@@ -490,35 +505,39 @@ function updatePatientSyncBadge(patientId, status) {
   }
 }
 
+function rehydratePatient(p) {
+  return {
+    ...p,
+    createdAt: new Date(p.createdAt),
+    generatedAt: p.generatedAt ? new Date(p.generatedAt) : null,
+    syncStatus: 'saved',
+    lastSyncAt: new Date(),
+    entries: (p.entries || []).map(e => ({
+      ...e,
+      addedAt: new Date(e.addedAt),
+    })),
+  };
+}
+
 async function loadShift() {
   try {
     const res = await fetch('/api/shift');
-    if (!res.ok) {
-      console.log('[loadShift] non-ok response:', res.status, res.statusText);
-      return;
-    }
+    if (!res.ok) return;
     const data = await res.json();
-    console.log('[loadShift] API response:', JSON.stringify(data));
     if (data && data.patients && data.patients.length > 0) {
       state.shiftName = data.shiftName || state.shiftName;
-      state.patients = data.patients.map(p => ({
-        ...p,
-        createdAt: new Date(p.createdAt),
-        generatedAt: p.generatedAt ? new Date(p.generatedAt) : null,
-        syncStatus: 'saved',
-        lastSyncAt: new Date(),
-        entries: p.entries.map(e => ({
-          ...e,
-          addedAt: new Date(e.addedAt),
-        })),
-      }));
-      console.log('[loadShift] patients before render:', state.patients.map(p => ({ id: p.id, label: p.label, entries: p.entries.length })));
+      state.patients = data.patients.map(rehydratePatient);
+      // Rebuild index if it was missing or incomplete
+      const loadedIds = new Set(state.patients.map(p => p.id));
+      const indexIds = new Set(data.patientIds || []);
+      const missing = state.patients.filter(p => !indexIds.has(p.id));
+      if (missing.length > 0) {
+        // Index was out of sync — resave it
+        await saveIndex();
+      }
       render();
-    } else {
-      console.log('[loadShift] no patients returned — patientIds:', data && data.patientIds, '| patients array:', data && data.patients);
     }
   } catch(e) {
-    console.error('[loadShift] error:', e.message);
     // Silent fail — start fresh
   }
 }
@@ -601,7 +620,7 @@ async function addPatient() {
   patient.lastSyncAt = null;
   state.patients.push(patient);
   setState({ activePatientId: patient.id, view: 'patient', showAddPatient: false, newPatientLabel: '', pendingText: '' });
-  await saveIndex();
+  scheduleIndexSync();
   scheduleSync(patient.id);
 }
 

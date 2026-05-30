@@ -42,32 +42,53 @@ export default {
     }
 
     // GET /api/shift — load shift index + all patients
+    // Falls back to KV list scan if shift_index is missing or incomplete
     if (request.method === "GET" && url.pathname === "/api/shift") {
       try {
         const indexRaw = await env.SHIFT_STORE.get("shift_index");
-        console.log("[/api/shift] shift_index raw:", indexRaw);
-        if (!indexRaw) {
-          console.log("[/api/shift] shift_index not found in KV — returning empty");
-          return new Response(JSON.stringify({ shiftName: null, patientIds: [] }), { headers: cors });
+        let patientIds = [];
+        let shiftName = null;
+
+        if (indexRaw) {
+          const index = JSON.parse(indexRaw);
+          patientIds = index.patientIds || [];
+          shiftName = index.shiftName || null;
         }
-        const index = JSON.parse(indexRaw);
-        console.log("[/api/shift] parsed index:", JSON.stringify(index));
-        // Load each patient individually
+
+        // Always scan KV for patient_ keys to catch any not in index
+        const listed = await env.SHIFT_STORE.list({ prefix: "patient_" });
+        const listedIds = listed.keys.map(k => k.name.replace("patient_", ""));
+
+        // Merge — union of index IDs and listed IDs
+        const allIds = [...new Set([...patientIds, ...listedIds])];
+
+        // Load each patient
         const patients = [];
-        for (const id of (index.patientIds || [])) {
-          console.log("[/api/shift] fetching patient_" + id);
+        for (const id of allIds) {
           const raw = await env.SHIFT_STORE.get("patient_" + id);
-          console.log("[/api/shift] patient_" + id + ":", raw ? "found (" + raw.length + " bytes)" : "null");
           if (raw) {
-            try { patients.push(JSON.parse(raw)); } catch(e) {
-              console.log("[/api/shift] failed to parse patient_" + id + ":", e.message);
-            }
+            try { patients.push(JSON.parse(raw)); } catch(e) {}
           }
         }
-        console.log("[/api/shift] returning", patients.length, "/", (index.patientIds || []).length, "patients");
-        return new Response(JSON.stringify({ shiftName: index.shiftName, patientIds: index.patientIds, patients }), { headers: cors });
+
+        // If scan found patients not in index, rebuild index automatically
+        if (listedIds.some(id => !patientIds.includes(id)) && patients.length > 0) {
+          const rebuilt = {
+            shiftName: shiftName || patients[0]?.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+            patientIds: allIds,
+            updatedAt: new Date().toISOString(),
+          };
+          await env.SHIFT_STORE.put("shift_index", JSON.stringify(rebuilt), { expirationTtl: 86400 });
+          shiftName = rebuilt.shiftName;
+        }
+
+        return new Response(JSON.stringify({
+          shiftName,
+          patientIds: allIds,
+          patients,
+        }), { headers: cors });
+
       } catch(e) {
-        console.error("[/api/shift] error:", e.message, e.stack);
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors });
       }
     }
@@ -99,14 +120,12 @@ export default {
     // DELETE /api/shift — end shift, wipe everything
     if (request.method === "DELETE" && url.pathname === "/api/shift") {
       try {
-        const indexRaw = await env.SHIFT_STORE.get("shift_index");
-        if (indexRaw) {
-          const index = JSON.parse(indexRaw);
-          for (const id of (index.patientIds || [])) {
-            await env.SHIFT_STORE.delete("patient_" + id);
-          }
-          await env.SHIFT_STORE.delete("shift_index");
+        // List and delete all patient_ keys
+        const listed = await env.SHIFT_STORE.list({ prefix: "patient_" });
+        for (const key of listed.keys) {
+          await env.SHIFT_STORE.delete(key.name);
         }
+        await env.SHIFT_STORE.delete("shift_index");
         return new Response(JSON.stringify({ ok: true }), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: cors });
