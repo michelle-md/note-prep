@@ -493,8 +493,12 @@ function updatePatientSyncBadge(patientId, status) {
 async function loadShift() {
   try {
     const res = await fetch('/api/shift');
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.log('[loadShift] non-ok response:', res.status, res.statusText);
+      return;
+    }
     const data = await res.json();
+    console.log('[loadShift] API response:', JSON.stringify(data));
     if (data && data.patients && data.patients.length > 0) {
       state.shiftName = data.shiftName || state.shiftName;
       state.patients = data.patients.map(p => ({
@@ -508,9 +512,13 @@ async function loadShift() {
           addedAt: new Date(e.addedAt),
         })),
       }));
+      console.log('[loadShift] patients before render:', state.patients.map(p => ({ id: p.id, label: p.label, entries: p.entries.length })));
       render();
+    } else {
+      console.log('[loadShift] no patients returned — patientIds:', data && data.patientIds, '| patients array:', data && data.patients);
     }
   } catch(e) {
+    console.error('[loadShift] error:', e.message);
     // Silent fail — start fresh
   }
 }

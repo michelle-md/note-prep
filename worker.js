@@ -45,20 +45,29 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/shift") {
       try {
         const indexRaw = await env.SHIFT_STORE.get("shift_index");
+        console.log("[/api/shift] shift_index raw:", indexRaw);
         if (!indexRaw) {
+          console.log("[/api/shift] shift_index not found in KV — returning empty");
           return new Response(JSON.stringify({ shiftName: null, patientIds: [] }), { headers: cors });
         }
         const index = JSON.parse(indexRaw);
+        console.log("[/api/shift] parsed index:", JSON.stringify(index));
         // Load each patient individually
         const patients = [];
         for (const id of (index.patientIds || [])) {
+          console.log("[/api/shift] fetching patient_" + id);
           const raw = await env.SHIFT_STORE.get("patient_" + id);
+          console.log("[/api/shift] patient_" + id + ":", raw ? "found (" + raw.length + " bytes)" : "null");
           if (raw) {
-            try { patients.push(JSON.parse(raw)); } catch(e) {}
+            try { patients.push(JSON.parse(raw)); } catch(e) {
+              console.log("[/api/shift] failed to parse patient_" + id + ":", e.message);
+            }
           }
         }
+        console.log("[/api/shift] returning", patients.length, "/", (index.patientIds || []).length, "patients");
         return new Response(JSON.stringify({ shiftName: index.shiftName, patientIds: index.patientIds, patients }), { headers: cors });
       } catch(e) {
+        console.error("[/api/shift] error:", e.message, e.stack);
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors });
       }
     }
