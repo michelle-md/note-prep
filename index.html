@@ -473,7 +473,7 @@
     'Mechanism of injury:','Primary survey:','Secondary survey:',
     'ECG:','Chest X-ray:','Chest X-Ray:','X-ray:','CT:','Bloods:',
     'Urine dip:','Urine BHCG:','Birth history:','Immunisations:',
-    'A:','B:','C:','D:','E:','RUQ:','LUQ:','Pelvis:','Cardiac:',
+    'RUQ:','LUQ:','Pelvis:','Cardiac:',
     'Right lung:','Left lung:','Shock index:',
   ];
 
@@ -510,6 +510,9 @@
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  // Single-letter labels that should only split at start of line
+  const SINGLE_LETTER_LABELS = new Set(['A:','B:','C:','D:','E:']);
+
   function fixSpacing(text) {
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     for (const header of SECTION_HEADERS) {
@@ -517,8 +520,15 @@
       text = text.replace(re, '$1\n$2');
     }
     for (const label of FIELD_LABELS) {
-      const re = new RegExp('([^\\n])(' + escapeRegex(label) + ')', 'g');
-      text = text.replace(re, '$1\n$2');
+      if (SINGLE_LETTER_LABELS.has(label)) {
+        // Only split if the label appears after a newline followed by optional spaces
+        // i.e. it is already at the start of a line — do not insert extra breaks
+        // Just ensure no leading whitespace before it on its line
+        text = text.replace(new RegExp('\\n[ \\t]+(' + escapeRegex(label) + ')', 'g'), '\n$1');
+      } else {
+        const re = new RegExp('([^\\n])(' + escapeRegex(label) + ')', 'g');
+        text = text.replace(re, '$1\n$2');
+      }
     }
     text = text.replace(/([^\n])(\d+\.[ \t])/g, '$1\n$2');
     text = text.replace(/\n[\t ]+(\d+\.)/g, '\n$1');
