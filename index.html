@@ -530,8 +530,8 @@
         text = text.replace(re, '$1\n$2');
       }
     }
-    text = text.replace(/([^\n])(\d+\.[ \t])/g, '$1\n$2');
-    text = text.replace(/\n[\t ]+(\d+\.)/g, '\n$1');
+    // Only split on numbered list items at start of line (not mid-sentence like 10:00 or GCS 15/15)
+    text = text.replace(/\n[ \t]*(\d+\.)[ \t]/g, '\n$1 ');
     text = text.replace(/\n{3,}/g, '\n\n');
     text = text.replace(/\n\n+/g, '\n');
     return text.trim();
