@@ -133,6 +133,14 @@ export default {
     }
 
     // Static assets
+    // clipboard.theconsultr.com is the ED Shift Clipboard's home — serve that
+    // app at "/" on this hostname specifically, instead of the default
+    // index.html (which is the separate Note Prep tool). Every other
+    // hostname this Worker responds on (workers.dev, a future
+    // noteprep.theconsultr.com, etc.) keeps the default index.html at "/".
+    if (url.pathname === "/" && url.hostname === "clipboard.theconsultr.com") {
+      return env.ASSETS.fetch(new Request(new URL("/ed-shift-clipboard.html", request.url), request));
+    }
     return env.ASSETS.fetch(request);
   },
 };
