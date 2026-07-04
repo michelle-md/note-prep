@@ -139,7 +139,7 @@ export default {
     // hostname this Worker responds on (workers.dev, a future
     // noteprep.theconsultr.com, etc.) keeps the default index.html at "/".
     if (url.pathname === "/" && url.hostname === "clipboard.theconsultr.com") {
-      return env.ASSETS.fetch(new Request(new URL("/ed-shift-clipboard.html", request.url), request));
+      return env.ASSETS.fetch(new Request(new URL("/ed-shift-clipboard", request.url), request));
     }
     return env.ASSETS.fetch(request);
   },
