@@ -49,7 +49,14 @@ Omit entirely if not provided.
 
 ## Weight-Based Dosing Table
 
-Include at the bottom of every paediatric note regardless of medications used.
+Only calculate and show a dose for a drug in this table if that specific drug was
+documented as administered in the ED (Treatment in the ED section) or prescribed
+as a script in the Plan section. Do not include a line for any of the five drugs
+below that was not actually given or prescribed for this patient — this table is
+not a standard reference to include regardless of what was used.
+
+If none of the five drugs were administered or prescribed, omit the table
+entirely.
 
 Paediatric weight-based dosing ([weight] kg):
 Paracetamol: [weight x 0.625] ml
@@ -59,4 +66,5 @@ Augmentin (Amoxicillin-clavulanate): [weight x 0.375] ml
 Zithromax (Azithromycin): [0.25 x weight] ml
 
 Round to one decimal place.
-If weight not provided, flag: [Weight not documented — dosing table cannot be calculated]
+If weight not provided and at least one of these drugs was given or prescribed,
+flag: [Weight not documented — dosing table cannot be calculated]

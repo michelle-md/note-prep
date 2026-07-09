@@ -47,6 +47,18 @@ Never hardcode reference ranges or units — use the source document.
 
 ---
 
+## Abnormal Result Flags
+
+Any result outside the reference range provided in the source document — but not
+meeting the Critical Value threshold above — is flagged inline with [H] (high) or
+[L] (low) immediately after the value. Do not use words like "elevated" or "low"
+in place of this bracket flag.
+Example: WCC 14.8 [H] | CRP 64 [H] | Sodium 128 [L]
+Only flag against the reference range given in the source document — never
+against a hardcoded range.
+
+---
+
 ## Shock Index
 
 Calculate automatically: SI = HR / SBP

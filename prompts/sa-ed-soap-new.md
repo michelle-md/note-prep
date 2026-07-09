@@ -83,7 +83,7 @@ Omit this section entirely if no procedures were performed.
 
 [Age]-year-old [sex] with [relevant background comorbidities]
 Now p/w: [primary diagnosis]
-Differentials: [list without explanations]
+Differentials: [pipe-separated list without explanations]
 [Clinical decision tool: name, score, interpretation — include where indicated]
 
 Clinical decision tools — auto-calculate and include where triggered:

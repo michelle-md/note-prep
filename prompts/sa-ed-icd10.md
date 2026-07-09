@@ -36,7 +36,7 @@ J45.0 Allergic asthma | J93.1 Spontaneous pneumothorax
 I63.9 Cerebral infarction unspecified | I61.9 Intracerebral haemorrhage
 G43.9 Migraine unspecified | R55 Syncope and collapse
 E11.9 Type 2 diabetes without complications | E16.0 Hypoglycaemia
-K92.1 Melaena | K92.0 Haematemesis | K35.8 Acute appendicitis
+K92.1 Melaena | K92.0 Haematemesis | K35 Acute appendicitis
 K80.0 Cholelithiasis with acute cholecystitis
 O00.9 Ectopic pregnancy unspecified | O20.0 Threatened abortion
 T14.9 Injury unspecified
