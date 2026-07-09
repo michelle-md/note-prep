@@ -10,6 +10,10 @@ Reference: health.gov.za/index.php/icd-10-codes
 - Clinician must confirm or override all codes before finalisation
 - Code primary diagnosis first, then secondary diagnoses and comorbidities
 - Never code suspected or differential diagnoses — confirmed only
+- If a diagnosis matches an entry in the Common SA ED Reference Codes list
+  below, use that exact code as given — do not substitute a more specific
+  or more general subcode variant from your own knowledge, even if you
+  believe it is more precise (e.g. use K35 as listed, not K35.8 or K35.20)
 
 ## Output Format
 
