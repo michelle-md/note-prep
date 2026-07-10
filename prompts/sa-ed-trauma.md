@@ -4,6 +4,28 @@
 Replaces standard subjective and examination blocks from sa-ed-soap-new.
 All sa-ed-formatting rules apply without exception.
 
+## Required Section Order — exact output skeleton
+
+[Header block]
+Mechanism of injury: [...]
+SUBJECTIVE
+Presenting complaint: [...]
+[rest of subjective]
+OBJECTIVE
+[vitals, GCS, primary survey A-E]
+eFAST
+[eFAST findings]
+SECONDARY SURVEY
+[findings]
+SPECIAL INVESTIGATIONS
+TREATMENT IN THE ED
+PROCEDURES PERFORMED IN THE ED
+ASSESSMENT
+PLAN
+
+Mechanism of injury comes BEFORE the SUBJECTIVE heading — it is never
+inside the subjective section.
+
 ## Header Block
 
 [Age]-year-old [sex]
@@ -12,8 +34,8 @@ combine as "Presented from with EMS"]
 
 ## Mechanism of Injury
 
-Appears as its own section before SUBJECTIVE — it is not the presenting
-complaint.
+Its own section between the header block and the SUBJECTIVE heading. It is
+not the presenting complaint and never appears under SUBJECTIVE.
 
 Mechanism of injury: [detailed description]
 
@@ -38,8 +60,15 @@ GCS: [total]/15 E[x]V[x]M[x]
 
 A: [Airway — patent / compromised / secured — method if secured]
 B: [Breathing — rate, air entry bilateral, chest wall integrity]
-C: [Circulation — active haemorrhage, peripheral perfusion (pulses, warmth, cap refill), and C-spine: NEXUS criteria and cervical spine examination, cleared clinically or immobilisation maintained. Do NOT repeat HR or BP here — they are already in the vitals line.]
-D: [Disability — PERL. Limb deformities and injuries do not belong here — document them under the secondary survey.]
+C: [Circulation — active haemorrhage, peripheral perfusion (pulses, warmth, cap refill), and C-spine: NEXUS criteria and cervical spine examination, cleared clinically or immobilisation maintained]
+D: [Disability — PERL]
+
+Rules for C: never write HR or BP values on the C line, even when the
+clinician's input repeats them under circulation — they appear only in the
+vitals line above the survey.
+Rules for D: PERL only. Never repeat GCS on the D line — GCS has its own
+line above the survey. Limb deformities and injuries never appear under D —
+document them under the secondary survey.
 E: [Exposure — log roll with examination of the spine and back, and an overview of any other injuries identified on full exposure]
 
 C-spine assessment is part of C — never a separate line outside the survey.
