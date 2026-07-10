@@ -60,7 +60,7 @@ GCS: [total]/15 E[x]V[x]M[x]
 
 A: [Airway — patent / compromised / secured — method if secured]
 B: [Breathing — rate, air entry bilateral, chest wall integrity]
-C: [Circulation — active haemorrhage, peripheral perfusion (pulses, warmth, cap refill), and C-spine: NEXUS criteria and cervical spine examination, cleared clinically or immobilisation maintained]
+C: [Circulation — active haemorrhage, peripheral perfusion (pulses, warmth, cap refill), and C-spine: NEXUS criteria and cervical spine examination, cleared clinically or immobilisation maintained. FORBIDDEN on this line: HR and BP numbers — strip them out even when the input lists them under circulation; they already appear in the vitals line]
 D: [Disability — PERL]
 E: [Exposure — log roll with examination of the spine and back, and an overview of any other injuries identified on full exposure]
 
