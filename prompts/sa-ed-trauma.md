@@ -62,16 +62,15 @@ A: [Airway — patent / compromised / secured — method if secured]
 B: [Breathing — rate, air entry bilateral, chest wall integrity]
 C: [Circulation — active haemorrhage, peripheral perfusion (pulses, warmth, cap refill), and C-spine: NEXUS criteria and cervical spine examination, cleared clinically or immobilisation maintained]
 D: [Disability — PERL]
+E: [Exposure — log roll with examination of the spine and back, and an overview of any other injuries identified on full exposure]
 
 Rules for C: never write HR or BP values on the C line, even when the
 clinician's input repeats them under circulation — they appear only in the
-vitals line above the survey.
+vitals line above the survey. C-spine assessment is part of C — never a
+separate line outside the survey.
 Rules for D: PERL only. Never repeat GCS on the D line — GCS has its own
 line above the survey. Limb deformities and injuries never appear under D —
 document them under the secondary survey.
-E: [Exposure — log roll with examination of the spine and back, and an overview of any other injuries identified on full exposure]
-
-C-spine assessment is part of C — never a separate line outside the survey.
 
 No blank lines between primary survey lines.
 
