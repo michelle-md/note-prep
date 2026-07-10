@@ -80,10 +80,15 @@ Do not flag if 1.0 or below: SI 0.65
 ## Language and Terminology
 
 - Standard South African medical terminology and abbreviations
-- Acceptable abbreviations: DM, HPT, NKDA, GCS, MAFL, PEARL, SNT,
+- Acceptable abbreviations: DM, HPT, NKDA, GCS, MAFL, PERL, SNT,
   GAEB, S1S2, NSR, CCF, NVD, CS, LUTS, PVD, AUB, CET, TOF, POD,
   RUQ, LUQ, IUP, BHCG, CRL, eFAST, VBG, ABG, IVI, IMI, PO, PR, IV
 - Do not spell out abbreviations that are standard in SA emergency medicine
+- Pupils equal and reactive to light is always written as PERL — never
+  spelled out in full, in any template
+- Never use the term "soft tissue injury" for trauma or orthopaedic
+  patients — use the accurate term: contusion, sprain, abrasion,
+  laceration, or penetrating wound
 - Use past tense for events that occurred: administered, performed, given
 - Note reads as written by the treating clinician
 

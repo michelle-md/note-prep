@@ -7,9 +7,13 @@ All sa-ed-formatting rules apply without exception.
 ## Header Block
 
 [Age]-year-old [sex]
-Presented from [home / with EMS / with HEMS]
+[Presented from home / Presented with EMS / Presented with HEMS — never
+combine as "Presented from with EMS"]
 
-## Subjective — Trauma
+## Mechanism of Injury
+
+Appears as its own section before SUBJECTIVE — it is not the presenting
+complaint.
 
 Mechanism of injury: [detailed description]
 
@@ -20,6 +24,11 @@ Include where relevant:
 - Time of injury
 - Pre-hospital interventions
 
+## Subjective — Trauma
+
+Presenting complaint: [the symptoms the patient is complaining of — pain,
+numbness, shortness of breath, etc. Never restate the mechanism here.]
+
 Medical conditions, medications, allergies in same format as sa-ed-soap-new.
 
 ## Objective — Primary Survey
@@ -29,30 +38,18 @@ GCS: [total]/15 E[x]V[x]M[x]
 
 A: [Airway — patent / compromised / secured — method if secured]
 B: [Breathing — rate, air entry bilateral, chest wall integrity]
-C: [Circulation — HR, BP, active haemorrhage, estimated blood loss, peripheral pulses]
-D: [Disability — GCS total and components, pupils, MAFL]
-E: [Exposure — injuries identified]
+C: [Circulation — active haemorrhage, peripheral perfusion (pulses, warmth, cap refill), and C-spine: NEXUS criteria and cervical spine examination, cleared clinically or immobilisation maintained. Do NOT repeat HR or BP here — they are already in the vitals line.]
+D: [Disability — PERL. Limb deformities and injuries do not belong here — document them under the secondary survey.]
+E: [Exposure — log roll with examination of the spine and back, and an overview of any other injuries identified on full exposure]
 
-C-spine: NEXUS criteria met / not met | Canadian C-spine rule applied
-C-spine cleared clinically / not cleared — immobilisation maintained
+C-spine assessment is part of C — never a separate line outside the survey.
 
 No blank lines between primary survey lines.
 
-## Objective — Secondary Survey
-
-Head: [findings]
-Face: [findings]
-Neck: [findings]
-Chest: [findings]
-Abdomen: [findings]
-Pelvis: [stability]
-Perineum/PR: [findings if examined]
-Extremities: [injuries per limb]
-Back: [findings if examined]
-
-Include only regions with positive findings or where examination was documented.
-
 ## eFAST
+
+An extension of the primary survey — not an adjunct. Appears immediately
+after the primary survey, before the secondary survey.
 
 RUQ: Free fluid present / absent
 LUQ: Free fluid present / absent
@@ -61,6 +58,36 @@ Cardiac: Pericardial effusion present / absent
 Right lung: Lung sliding present / absent, pneumothorax present / absent
 Left lung: Lung sliding present / absent, pneumothorax present / absent
 
+## Objective — Secondary Survey
+
+The full head-to-toe examination.
+
+Head: [findings]
+Face: [findings]
+Neck: [findings]
+Chest: [findings]
+Abdomen: [findings]
+Pelvis: [stability]
+Perineum/PR: [findings if examined]
+Musculoskeletal/Extremities: [injuries per limb — deformities, wounds, distal neurovascular status]
+
+Include only regions with positive findings or where examination was documented.
+The back and spine are documented under E in the primary survey (log roll) — not here.
+
+## Procedures Performed in the ED
+
+Own heading, after Treatment in the ED. Only procedures performed by a
+doctor — never nursing procedures such as catheterisation. The clinician
+signals these with the words "procedures performed" in the input.
+Examples: intercostal drain (ICD), intubation, wound suturing, fracture or
+dislocation reduction.
+Omit this section entirely if no doctor-performed procedures documented.
+
+## Terminology — Trauma and Orthopaedics
+
+Never use the term "soft tissue injury". Choose the accurate term instead:
+contusion | sprain | abrasion | laceration | penetrating wound
+
 ## Assessment — Trauma Format
 
 [Age]-year-old [sex] with [background if relevant]
@@ -68,4 +95,4 @@ Now p/w: [primary injury / mechanism summary]
 Injuries identified:
 [Injury 1]
 [Injury 2]
-Differentials: [occult injuries or diagnoses to exclude]
+Differentials: [pipe-separated — occult injuries or diagnoses to exclude]

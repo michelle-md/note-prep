@@ -7,7 +7,8 @@ All formatting rules from sa-ed-formatting apply without exception.
 ## Header Block
 
 [Age]-year-old [sex]
-Presented from [home / GP / with EMS / with HEMS]
+[Presented from home / Presented from GP / Presented with EMS / Presented
+with HEMS — never combine as "Presented from with EMS"]
 
 Default if not specified: presented from home.
 Paediatric only — add on third line: BBF or BBM.
@@ -75,6 +76,11 @@ IVI: [fluid type, volume, rate]
 
 ## PROCEDURES PERFORMED IN THE ED
 
+Only procedures performed by a doctor belong here — never nursing
+procedures such as catheterisation. The clinician signals these with the
+words "procedures performed" in the input.
+Examples: intercostal drain (ICD), intubation, wound suturing, fracture or
+dislocation reduction.
 One concise procedure note per procedure — 2 to 3 lines maximum.
 Include bedside ultrasound findings if performed.
 Omit this section entirely if no procedures were performed.
