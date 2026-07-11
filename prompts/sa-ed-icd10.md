@@ -37,7 +37,7 @@ These are the clinician's usual codes, taken directly from her Prometheus
 favourites list. When a documented diagnosis matches one of these, use this
 exact code — always preferred over any other code choice. The shorthand in
 brackets is how the clinician commonly refers to the diagnosis in dictation.
-This library is being built up progressively (A to K series captured so
+This library is being built up progressively (A to N series captured so
 far; more series to follow).
 
 A09 Gastroenteritis (AGE)
@@ -181,6 +181,43 @@ K80.5 Calculus of bile duct without cholangitis or cholecystitis (biliary colic)
 K80.8 Other cholelithiasis (cholelithiasis)
 K81.0 Acute cholecystitis
 K83.1 Obstruction of bile duct (obstructive jaundice)
+K85 Acute pancreatitis
+K92.2 Gastrointestinal haemorrhage unspecified (UGIB, GI bleeding, GI bleed)
+L02 Cutaneous abscess furuncle and carbuncle (abscess)
+L02.8 Cutaneous abscess of other sites (paronychia)
+L30.9 Dermatitis unspecified
+L50.0 Allergic urticaria (allergic rash)
+L51.1 Bullous erythema multiforme (SJS)
+L73.2 Hidradenitis suppurativa
+L89 Decubitus ulcer and pressure area (bed sores)
+M13.96 Arthritis unspecified lower leg (arthritis lower limbs)
+M54.12 Radiculopathy cervical region (cervical radiculopathy)
+M54.16 Radiculopathy lumbar region (lumbar radiculopathy)
+M54.56 Low back pain lumbar region (LBP)
+M62.26 Ischaemic infarction of muscle lower leg (acute limb ischaemia)
+M62.89 Other specified disorders of muscle (rhabdo, rhabdomyolysis)
+M79.10 Myalgia multiple sites (myalgia)
+M79.18 Myalgia other (general body pain)
+M94.0 Chondrocostal junction syndrome (costochondritis)
+M94.08 Chondrocostal junction syndrome other site (costochondritis)
+N10 Acute tubulo-interstitial nephritis (acute pyelonephritis)
+N13.2 Hydronephrosis with renal and ureteral calculous obstruction (obstructive hydronephrosis)
+N13.4 Hydroureter
+N17.9 Acute renal failure unspecified (AKI)
+N18 Chronic kidney disease (CKD)
+N18.9 Chronic kidney disease unspecified (CKD, renal failure)
+N19 Unspecified renal dysfunction (renal dysfunction)
+N20.0 Calculus of kidney (renal calculus)
+N20.1 Calculus of ureter (ureteric calculus, ureteric stone)
+N39.0 Urinary tract infection site not specified (UTI)
+N41.0 Acute prostatitis
+N44 Torsion of testis (testicular torsion)
+N45.9 Orchitis epididymitis and epididymo-orchitis (epididymo-orchitis)
+N47 Redundant prepuce and phimosis (phimosis)
+N48.1 Balanoposthitis (balanitis)
+N48.3 Priapism
+N63 Unspecified lump in breast (breast lump)
+N80.8 Other endometriosis (endometriosis)
 
 ## General SA ED Reference Codes — secondary
 
