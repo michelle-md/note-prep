@@ -12,7 +12,7 @@ SUBJECTIVE
 Presenting complaint: [...]
 [rest of subjective]
 OBJECTIVE
-[vitals, GCS, primary survey A-E]
+[vitals line, then primary survey A-E]
 eFAST
 [eFAST findings]
 SECONDARY SURVEY
@@ -56,21 +56,21 @@ Medical conditions, medications, allergies in same format as sa-ed-soap-new.
 ## Objective — Primary Survey
 
 Vitals: HR [x] | BP [x/x] | RR [x] | Temp [x] | SpO2 [x]% [RA or O2] | SI [calculated]
-GCS: [total]/15 E[x]V[x]M[x]
 
 A: [Airway — patent / compromised / secured — method if secured]
 B: [Breathing — rate, air entry bilateral, chest wall integrity]
 C: [Circulation — active haemorrhage, peripheral perfusion (pulses, warmth, cap refill), and C-spine: NEXUS criteria and cervical spine examination, cleared clinically or immobilisation maintained. FORBIDDEN on this line: HR and BP numbers — strip them out even when the input lists them under circulation; they already appear in the vitals line]
-D: [Disability — PEARL]
+D: GCS [total]/15 E[x]V[x]M[x], PEARL
 E: [Exposure — log roll with examination of the spine and back, and an overview of any other injuries identified on full exposure]
 
 Rules for C: never write HR or BP values on the C line, even when the
 clinician's input repeats them under circulation — they appear only in the
 vitals line above the survey. C-spine assessment is part of C — never a
 separate line outside the survey.
-Rules for D: PEARL only. Never repeat GCS on the D line — GCS has its own
-line above the survey. Limb deformities and injuries never appear under D —
-document them under the secondary survey.
+Rules for D: GCS (with components) and PEARL, nothing else. GCS lives on
+the D line — never as a standalone line after the vitals or anywhere else
+in the note. Limb deformities and injuries never appear under D — document
+them under the secondary survey.
 
 No blank lines between primary survey lines.
 
