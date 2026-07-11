@@ -27,6 +27,13 @@ Rules:
 - Assume NKDA if allergies not provided
 - Assume no medical conditions if not provided — omit the line
 - Assume no surgical history if not provided — omit the line
+- Assume no medications if not provided — omit the line
+- Assume alcohol/cigarettes/drug use not relevant if not provided — omit the line
+- FORBIDDEN in the SUBJECTIVE section: writing [NOT DOCUMENTED] on any
+  history line. A history field that was not provided is either omitted
+  entirely (medical conditions, surgical history, medications,
+  alcohol/cigarettes/drug use) or defaulted (allergies to NKDA) — never
+  shown with a placeholder flag
 - No blank lines between any headings in this section
 - Medications formatted as: Drug dose | Drug dose | Drug dose
 
