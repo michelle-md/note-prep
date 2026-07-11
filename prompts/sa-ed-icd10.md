@@ -37,7 +37,7 @@ These are the clinician's usual codes, taken directly from her Prometheus
 favourites list. When a documented diagnosis matches one of these, use this
 exact code — always preferred over any other code choice. The shorthand in
 brackets is how the clinician commonly refers to the diagnosis in dictation.
-This library is being built up progressively (A to E series captured so
+This library is being built up progressively (A to I series captured so
 far; more series to follow).
 
 A09 Gastroenteritis (AGE)
@@ -76,6 +76,45 @@ E87.5 Hyperkalaemia
 E87.6 Hypokalaemia
 E87.8 Other disorders of electrolyte and fluid balance (multiple electrolyte disturbances)
 E88.9 Metabolic disorder unspecified (metabolic syndrome)
+F19.8 Mental and behavioural disorder due to substance use (substance use disorder)
+F23.9 Acute and transient psychotic disorder (psychosis)
+F32.2 Severe depressive episode (severe depression)
+F43.0 Acute stress reaction (anxiety, panic)
+F43.1 Post-traumatic stress disorder (PTSD)
+F44.5 Dissociative convulsions (pseudoseizures)
+G03.8 Meningitis due to other specified causes (meningitis)
+G03.9 Meningitis unspecified
+G40.4 Other generalized epilepsy (generalized epilepsy syndrome)
+G40.6 Grand mal seizures (GTC seizures)
+G40.9 Epilepsy unspecified
+G41.0 Grand mal status epilepticus (status epilepticus)
+G44.2 Tension-type headache (tension headache)
+G45.3 Amaurosis fugax
+G45.9 Transient cerebral ischaemic attack unspecified (TIA)
+G62.9 Polyneuropathy unspecified
+G83.4 Cauda equina syndrome
+G93.4 Encephalopathy unspecified
+H00.0 Hordeolum (stye)
+H10.3 Acute conjunctivitis unspecified (conjunctivitis)
+H53.9 Visual disturbance unspecified (visual changes)
+H60.9 Otitis externa unspecified (OE)
+H61.2 Impacted cerumen (wax impaction)
+H81.1 Benign paroxysmal vertigo (BPPV)
+I10 Essential primary hypertension (HPT)
+I11.9 Hypertensive heart disease (HPT with CCF)
+I13.2 Hypertensive heart and renal disease (HPT with CCF and AKI)
+I20.0 Unstable angina
+I21.9 Acute myocardial infarction unspecified (acute OMI, MI)
+I24.9 Acute ischaemic heart disease unspecified (acute IHD)
+I25.1 Atherosclerotic heart disease (CAD)
+I25.5 Ischaemic cardiomyopathy (ICMO)
+I26.0 Pulmonary embolism with acute cor pulmonale (PE with cor pulmonale)
+I26.9 Pulmonary embolism without acute cor pulmonale (PE)
+I33.9 Acute endocarditis unspecified
+I44.2 Atrioventricular block complete (complete heart block)
+I45.8 Other specified conduction disorders (prolonged QT)
+I46.0 Cardiac arrest with successful resuscitation (cardiac arrest with ROSC)
+I46.9 Cardiac arrest unspecified
 
 ## General SA ED Reference Codes — secondary
 
@@ -83,7 +122,7 @@ Used when no clinician favourite covers the diagnosis. The favourites list
 above always takes precedence on any overlap.
 
 I21.0 Acute transmural MI anterior wall | I21.1 Acute transmural MI inferior wall
-I21.4 NSTEMI | I20.0 Unstable angina | I10 Essential hypertension
+I21.4 NSTEMI
 I50.0 Congestive heart failure | I48 Atrial fibrillation
 J18.9 Pneumonia unspecified | J44.1 COPD with acute exacerbation
 J45.0 Allergic asthma | J93.1 Spontaneous pneumothorax
