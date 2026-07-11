@@ -80,6 +80,10 @@ export default {
       // System prompt always comes from the bundled prompt files server-side —
       // never trust whatever the client sends here.
       body.system = SYSTEM_PROMPT;
+      // Clinical documentation needs deterministic rule-following, not
+      // creative variation — low temperature keeps formatting rules applied
+      // consistently across runs.
+      body.temperature = 0.2;
       try {
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
