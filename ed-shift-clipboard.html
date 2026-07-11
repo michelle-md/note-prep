@@ -253,6 +253,68 @@
     pointer-events: none;
   }
   .copy-toast.show { opacity: 1; }
+
+  /* Split output — labelled result blocks */
+  .result-block { margin-bottom: 14px; }
+  .result-block-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  .result-block-label {
+    font-size: 11px; font-weight: 600; color: #7A736C;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .result-block.primary .result-block-label { color: #3B6B8A; }
+
+  /* Checks box — live missing data + red flags */
+  .checks-box {
+    background: #fff; border: 1px solid #E2DDD8; border-left: 3px solid #9A6B2E;
+    border-radius: 6px; padding: 12px 14px; margin-top: 16px;
+  }
+  .checks-header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; margin-bottom: 8px;
+  }
+  .checks-title { font-size: 12px; font-weight: 600; color: #2C2825; }
+  .checks-right { display: flex; align-items: center; gap: 8px; }
+  .checks-meta { font-size: 11px; color: #7A736C; font-family: monospace; }
+  .checks-body {
+    font-size: 13px; font-family: monospace; color: #2C2825;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  }
+  .checks-empty { font-size: 12px; color: #7A736C; line-height: 1.5; }
+  .checks-refresh {
+    background: none; border: 1px solid #B5AFA9; border-radius: 4px;
+    color: #7A736C; font-size: 11px; font-family: inherit;
+    padding: 3px 10px; cursor: pointer;
+  }
+  .checks-refresh:active { background: #F0EDE8; }
+
+  /* Ask the Consult */
+  .consult-btn {
+    width: 100%; margin-bottom: 14px; padding: 11px 18px;
+    font-size: 14px; font-weight: 500; font-family: inherit;
+    border-radius: 4px; cursor: pointer;
+    border: 1px solid #3B6B8A; background: #EBF2F7; color: #3B6B8A;
+  }
+  .consult-btn:active { background: #dce8f1; }
+  .consult-panel {
+    background: #fff; border: 1px solid #3B6B8A; border-radius: 6px;
+    padding: 12px; margin-bottom: 14px;
+  }
+  .consult-panel-title { font-size: 13px; font-weight: 600; color: #3B6B8A; margin-bottom: 4px; }
+  .consult-panel-hint { font-size: 12px; color: #7A736C; margin-bottom: 10px; line-height: 1.5; }
+  .consult-qa { margin-bottom: 12px; }
+  .consult-q {
+    font-size: 13px; font-weight: 600; color: #2C2825;
+    background: #EBF2F7; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+  }
+  .consult-a {
+    font-size: 13px; color: #2C2825; font-family: monospace;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    padding: 0 2px;
+  }
+  .consult-a-time { font-size: 10px; color: #B5AFA9; font-family: monospace; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -288,6 +350,10 @@ let state = {
   tclEnabled: true,      // spell-check transcripts against SA EML vocabulary
   isCorrecting: false,
   tclNotice: null,
+  showConsult: false,    // Ask the Consult panel open on the patient card
+  consultQuestion: '',
+  consultLoading: false,
+  consultError: null,
 };
 
 function generateId() {
@@ -420,6 +486,8 @@ function rehydratePatient(p) {
     generatedAt: p.generatedAt ? new Date(p.generatedAt) : null,
     syncStatus: 'saved',
     lastSyncAt: new Date(),
+    liveCheck: p.liveCheck ? { ...p.liveCheck, at: p.liveCheck.at ? new Date(p.liveCheck.at) : null } : null,
+    consult: Array.isArray(p.consult) ? p.consult.map(c => ({ ...c, at: c.at ? new Date(c.at) : null })) : [],
     entries: (p.entries || []).map(e => ({
       ...e,
       addedAt: new Date(e.addedAt),
@@ -543,6 +611,7 @@ function deleteEntry(patientId, entryId) {
   p.entries = p.entries.filter(e => e.id !== entryId);
   render();
   scheduleSync(patientId);
+  scheduleLiveCheck(patientId);
 }
 
 function addTextEntry(patientId, text, extra) {
@@ -552,6 +621,7 @@ function addTextEntry(patientId, text, extra) {
   p.entries.push({ id: generateId(), type: 'text', content: text, addedAt: new Date(), ...(extra || {}) });
   setState({ pendingText: '' });
   scheduleSync(patientId);
+  scheduleLiveCheck(patientId);
 }
 
 // Transcript Correction Layer — sends the raw text through /api/tcl
@@ -595,6 +665,7 @@ function revertCorrections(patientId, entryId) {
   entry.corrections = null;
   render();
   scheduleSync(patientId);
+  scheduleLiveCheck(patientId);
 }
 
 function addImageEntry(patientId, dataUrl, filename) {
@@ -603,6 +674,7 @@ function addImageEntry(patientId, dataUrl, filename) {
   p.entries.push({ id: generateId(), type: 'image', content: dataUrl, filename, addedAt: new Date() });
   render();
   scheduleSync(patientId);
+  scheduleLiveCheck(patientId);
 }
 
 function handleImageFiles(files) {
@@ -611,6 +683,196 @@ function handleImageFiles(files) {
     reader.onload = ev => addImageEntry(state.activePatientId, ev.target.result, file.name);
     reader.readAsDataURL(file);
   });
+}
+
+// Build the Anthropic user-content array (combined text notes + images) from a
+// patient's entries. Shared by note generation, the live check, and the
+// consult so all three see the same clinical context. Callers append their own
+// trailing instruction.
+function buildPatientContent(patient) {
+  const content = [];
+  const textEntries = patient.entries.filter(e => e.type === 'text');
+  const imageEntries = patient.entries.filter(e => e.type === 'image');
+
+  if (textEntries.length > 0) {
+    const combined = textEntries
+      .map((e, i) => `[Note ${i+1} — added ${formatTime(e.addedAt)}]\n${e.content}`)
+      .join('\n\n');
+    content.push({ type: 'text', text: `Patient: ${patient.label}\nShift: ${state.shiftName}\n\nCLINICAL NOTES:\n${combined}` });
+  }
+
+  imageEntries.forEach((e, i) => {
+    const parts = e.content.split(',');
+    const mediaType = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const base64 = parts[1];
+    content.push({ type: 'text', text: `[Image ${i+1}: ${e.filename || 'uploaded image'}]` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
+  });
+
+  return content;
+}
+
+// Split a generated note into its labelled sections. Robust to markers being
+// out of order or missing. If no @@NOTE@@ marker is present at all (e.g. an
+// older note generated before this format, or a malformed response), the whole
+// text degrades gracefully into the note box rather than throwing.
+function parseSections(raw) {
+  const out = { note: '', careonCode: '', prometheusCode: '', flags: '', missing: '' };
+  if (!raw) return out;
+  if (!raw.includes('@@NOTE@@')) {
+    out.note = raw.trim();
+    return out;
+  }
+  const markers = [
+    ['@@NOTE@@', 'note'],
+    ['@@CAREON_CODE@@', 'careonCode'],
+    ['@@PROMETHEUS_CODE@@', 'prometheusCode'],
+    ['@@FLAGS@@', 'flags'],
+    ['@@MISSING@@', 'missing'],
+  ];
+  for (let i = 0; i < markers.length; i++) {
+    const start = raw.indexOf(markers[i][0]);
+    if (start === -1) continue;
+    const from = start + markers[i][0].length;
+    let end = raw.length;
+    for (let j = 0; j < markers.length; j++) {
+      if (j === i) continue;
+      const idx = raw.indexOf(markers[j][0], from);
+      if (idx !== -1 && idx < end) end = idx;
+    }
+    out[markers[i][1]] = raw.slice(from, end).trim();
+  }
+  return out;
+}
+
+function copyAll(patientId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (p && p.generatedOutput) copyText(p.generatedOutput);
+}
+
+function copySection(patientId, key) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p || !p.generatedOutput) return;
+  const val = parseSections(p.generatedOutput)[key];
+  if (val) copyText(val);
+}
+
+// --- Live "missing data & red flags" check -------------------------------
+// A lightweight, non-authoritative scan that re-runs a few seconds after data
+// changes, so the clinician sees gaps and red flags while still working the
+// patient up — not only after a full note is generated.
+
+function entrySignature(patient) {
+  return (patient.entries || [])
+    .map(e => e.id + ':' + e.type + ':' + (e.content ? e.content.length : 0))
+    .join('|');
+}
+
+const liveCheckTimers = {};
+function scheduleLiveCheck(patientId) {
+  clearTimeout(liveCheckTimers[patientId]);
+  liveCheckTimers[patientId] = setTimeout(() => runLiveCheck(patientId), 3500);
+}
+
+async function runLiveCheck(patientId, force) {
+  const patient = state.patients.find(p => p.id === patientId);
+  if (!patient) return;
+
+  if (patient.entries.length === 0) {
+    patient.liveCheck = null;
+    patient._liveCheckSig = null;
+    if (state.activePatientId === patientId) updateChecksBox(patientId);
+    return;
+  }
+
+  const sig = entrySignature(patient);
+  if (!force && patient._liveCheckSig === sig && patient.liveCheck) return;
+  patient._liveCheckSig = sig;
+
+  patient.liveCheckLoading = true;
+  patient.liveCheckError = null;
+  if (state.activePatientId === patientId) updateChecksBox(patientId);
+
+  try {
+    const content = buildPatientContent(patient);
+    const res = await fetch('/api/live-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || 'Live check failed');
+    patient.liveCheck = { text: (data.text || '').trim(), at: new Date() };
+    patient.liveCheckLoading = false;
+    if (state.activePatientId === patientId) updateChecksBox(patientId);
+    scheduleSync(patientId);
+  } catch(e) {
+    patient.liveCheckLoading = false;
+    patient.liveCheckError = 'Checks unavailable — tap Refresh to retry';
+    patient._liveCheckSig = null; // allow a retry on next change
+    if (state.activePatientId === patientId) updateChecksBox(patientId);
+  }
+}
+
+function updateChecksBox(patientId) {
+  const c = document.getElementById('checksContainer');
+  const patient = state.patients.find(p => p.id === patientId);
+  if (c && patient) c.innerHTML = renderChecksBox(patient);
+}
+
+// --- Ask the Consult -----------------------------------------------------
+function toggleConsult() {
+  setState({ showConsult: !state.showConsult, consultError: null });
+}
+
+async function askConsult(patientId) {
+  const patient = state.patients.find(p => p.id === patientId);
+  if (!patient) return;
+  const q = (state.consultQuestion || '').trim();
+  if (!q || state.consultLoading) return;
+
+  state.consultLoading = true;
+  state.consultError = null;
+  render();
+
+  // First user turn carries the patient context; a synthetic acknowledgement
+  // keeps the alternation valid; then prior Q/A pairs; then the new question.
+  const context = buildPatientContent(patient);
+  const contextTurn = context.length > 0
+    ? context.concat([{ type: 'text', text: 'The above is this patient\'s data captured so far. Use it as context for my questions.' }])
+    : [{ type: 'text', text: 'No patient data has been entered on this card yet. Answer my clinical question generally.' }];
+
+  const messages = [{ role: 'user', content: contextTurn }];
+  messages.push({ role: 'assistant', content: 'Understood. What is your question?' });
+  (patient.consult || []).forEach(c => {
+    messages.push({ role: 'user', content: c.q });
+    messages.push({ role: 'assistant', content: c.a });
+  });
+  messages.push({ role: 'user', content: q });
+
+  try {
+    const res = await fetch('/api/consult', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || 'Consult failed');
+    const answer = (data.text || '').trim();
+    patient.consult = (patient.consult || []).concat([{ q, a: answer, at: new Date() }]);
+    state.consultLoading = false;
+    state.consultQuestion = '';
+    render();
+    scheduleSync(patientId);
+  } catch(err) {
+    state.consultLoading = false;
+    let msg = err.message || 'Consult failed';
+    if (msg.includes('DOCTYPE') || msg.includes('JSON') || msg.includes('fetch')) {
+      msg = 'Network error — you may be on hospital WiFi. Switch to mobile data and try again.';
+    }
+    state.consultError = msg;
+    render();
+  }
 }
 
 async function generateNote(patientId) {
@@ -628,26 +890,8 @@ async function generateNote(patientId) {
     if (el) el.textContent = state.elapsedSeconds + 's';
   }, 1000);
 
-  const userContent = [];
-  const textEntries = patient.entries.filter(e => e.type === 'text');
-  const imageEntries = patient.entries.filter(e => e.type === 'image');
-
-  if (textEntries.length > 0) {
-    const combined = textEntries
-      .map((e, i) => `[Note ${i+1} — added ${formatTime(e.addedAt)}]\n${e.content}`)
-      .join('\n\n');
-    userContent.push({ type: 'text', text: `Patient: ${patient.label}\nShift: ${state.shiftName}\n\nCLINICAL NOTES:\n${combined}` });
-  }
-
-  imageEntries.forEach((e, i) => {
-    const parts = e.content.split(',');
-    const mediaType = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
-    const base64 = parts[1];
-    userContent.push({ type: 'text', text: `[Image ${i+1}: ${e.filename || 'uploaded image'}]` });
-    userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
-  });
-
-  userContent.push({ type: 'text', text: '\nGenerate the complete final output now: SOAP note, ICD-10 codes block, billing suggestions block, and clinical flags. Process all provided content in one pass. Do not ask questions — flag any missing data at the end.' });
+  const userContent = buildPatientContent(patient);
+  userContent.push({ type: 'text', text: '\nGenerate the complete final output now, using the five labelled sections (@@NOTE@@, @@CAREON_CODE@@, @@PROMETHEUS_CODE@@, @@FLAGS@@, @@MISSING@@) exactly as specified. Process all provided content in one pass. Do not ask questions — put any missing data under @@MISSING@@.' });
 
   try {
     const response = await fetch('/api/claude', {
@@ -733,6 +977,77 @@ function renderShiftView() {
       ${patientCards}
     </div>
     ${fab}`;
+}
+
+function renderConsultPanel(patient) {
+  const thread = (patient.consult || []).map(c => `
+    <div class="consult-qa">
+      <div class="consult-q">${esc(c.q)}</div>
+      <div class="consult-a">${esc(c.a)}</div>
+      <div class="consult-a-time">${c.at ? formatTime(c.at instanceof Date ? c.at : new Date(c.at)) : ''}</div>
+    </div>`).join('');
+  const hasData = patient.entries && patient.entries.length > 0;
+  return `
+    <div class="consult-panel">
+      <div class="consult-panel-title">Ask the Consult</div>
+      <div class="consult-panel-hint">${hasData
+        ? "This patient's notes and images go in as context. Ask about management, differentials, dosing, or interpretation. SA-contextualised, evidence-cited."
+        : 'No data on this card yet — you can still ask a general clinical question.'}</div>
+      ${thread}
+      ${state.consultLoading ? '<div class="consult-panel-hint">Consulting the evidence…</div>' : ''}
+      ${state.consultError ? `<div class="error-box">${esc(state.consultError)}</div>` : ''}
+      <textarea id="consultInput" placeholder="e.g. Does this chest pain warrant the HEART pathway? First-line antibiotic for this in SA?"
+        oninput="state.consultQuestion=this.value">${esc(state.consultQuestion || '')}</textarea>
+      <button class="btn-primary" ${state.consultLoading ? 'disabled' : ''} onclick="askConsult('${patient.id}')">${state.consultLoading ? 'Asking…' : 'Ask'}</button>
+    </div>`;
+}
+
+function renderChecksBox(patient) {
+  const hasEntries = patient.entries && patient.entries.length > 0;
+  const gen = patient.generatedOutput ? parseSections(patient.generatedOutput) : null;
+  const genAt = patient.generatedAt ? (patient.generatedAt instanceof Date ? patient.generatedAt : new Date(patient.generatedAt)) : null;
+  const live = patient.liveCheck || null;
+  const liveAt = live && live.at ? (live.at instanceof Date ? live.at : new Date(live.at)) : null;
+
+  // Show whichever is newer: the finalised flags/missing from a generated note,
+  // or the latest live check.
+  let source = null;
+  if (gen && genAt && (!liveAt || genAt >= liveAt)) source = 'gen';
+  else if (live) source = 'live';
+
+  let body = '';
+  let metaLabel = '';
+  if (source === 'gen') {
+    const missing = (gen.missing || '').trim() || 'No obvious gaps.';
+    const flags = (gen.flags || '').trim() || 'No clinical flags.';
+    body = `<div class="checks-body">${esc('MISSING\n' + missing + '\n\nCLINICAL FLAGS\n' + flags)}</div>`;
+    metaLabel = 'from note ' + (genAt ? formatTime(genAt) : '');
+  } else if (source === 'live') {
+    body = `<div class="checks-body">${esc(live.text || '')}</div>`;
+    metaLabel = (patient.liveCheckLoading ? 'updating… ' : 'live ') + (liveAt ? formatTime(liveAt) : '');
+  } else if (patient.liveCheckLoading) {
+    body = '<div class="checks-empty">Checking…</div>';
+  } else if (!hasEntries) {
+    body = '<div class="checks-empty">Add notes or a photo — missing data and red flags will appear here as you go.</div>';
+  } else {
+    body = `<div class="checks-empty">${esc(patient.liveCheckError || 'Checking…')}</div>`;
+  }
+
+  const refreshBtn = hasEntries
+    ? `<button class="checks-refresh" onclick="runLiveCheck('${patient.id}', true)">Refresh</button>`
+    : '';
+
+  return `
+    <div class="checks-box">
+      <div class="checks-header">
+        <span class="checks-title">Missing data &amp; clinical flags</span>
+        <span class="checks-right">
+          <span class="checks-meta">${esc(metaLabel)}</span>
+          ${refreshBtn}
+        </span>
+      </div>
+      ${body}
+    </div>`;
 }
 
 function renderPatientView() {
@@ -837,15 +1152,39 @@ function renderPatientView() {
           onchange="handleIterateImages(this.files,'${patient.id}');this.value=''">
       </div>` : '';
 
+    const s = parseSections(patient.generatedOutput);
     outputSection = `
       <div class="output-section">
         <div class="output-header">
           <div class="output-meta">Generated ${patient.generatedAt ? formatTime(patient.generatedAt) : ''}</div>
-          <button class="copy-btn" onclick="copyText(${JSON.stringify(patient.generatedOutput)})">Copy all</button>
+          <button class="copy-btn" onclick="copyAll('${patient.id}')">Copy all</button>
         </div>
-        <div class="output-box">${esc(patient.generatedOutput)}</div>
+
+        <div class="result-block primary">
+          <div class="result-block-header">
+            <span class="result-block-label">CareOn note</span>
+            <button class="copy-btn" onclick="copySection('${patient.id}','note')">Copy</button>
+          </div>
+          <div class="output-box">${esc(s.note || '')}</div>
+        </div>
+
+        <div class="result-block">
+          <div class="result-block-header">
+            <span class="result-block-label">CareOn ICD-10 code</span>
+            <button class="copy-btn" onclick="copySection('${patient.id}','careonCode')">Copy</button>
+          </div>
+          <div class="output-box">${esc(s.careonCode || '')}</div>
+        </div>
+
+        <div class="result-block">
+          <div class="result-block-header">
+            <span class="result-block-label">Prometheus coding</span>
+            <button class="copy-btn" onclick="copySection('${patient.id}','prometheusCode')">Copy</button>
+          </div>
+          <div class="output-box">${esc(s.prometheusCode || '')}</div>
+        </div>
+
         <div class="output-action-row">
-          <button class="btn-soap" onclick="copySoap('${patient.id}')">Copy SOAP note</button>
           <button class="btn-iterate" onclick="setState({showIterate:!state.showIterate, iterateText:''})">
             ${state.showIterate ? 'Cancel' : 'Iterate note'}
           </button>
@@ -854,11 +1193,18 @@ function renderPatientView() {
       </div>`;
   }
 
+  const consultButton = `<button class="consult-btn" onclick="toggleConsult()">${state.showConsult ? 'Close consult' : 'Ask the Consult'}</button>`;
+  const consultPanel = state.showConsult ? renderConsultPanel(patient) : '';
+  const checksBox = `<div id="checksContainer">${renderChecksBox(patient)}</div>`;
+
   return `
     <div class="content">
+      ${consultButton}
+      ${consultPanel}
       ${textSection}
       ${imageSection}
       ${addArea}
+      ${checksBox}
       ${generateArea}
       ${outputSection}
     </div>`;
@@ -904,7 +1250,11 @@ function render() {
 }
 
 function openPatient(id) {
-  setState({ activePatientId: id, view: 'patient', pendingText: '', generateError: null });
+  setState({ activePatientId: id, view: 'patient', pendingText: '', generateError: null, showConsult: false, consultQuestion: '', consultError: null });
+  // Refresh the live checks for a card that already has data (deduped — skips
+  // the API call if nothing has changed since the last check).
+  const p = state.patients.find(p => p.id === id);
+  if (p && p.entries.length > 0) scheduleLiveCheck(id);
 }
 
 async function addNoteFromInput() {
