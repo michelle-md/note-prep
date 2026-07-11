@@ -37,7 +37,7 @@ These are the clinician's usual codes, taken directly from her Prometheus
 favourites list. When a documented diagnosis matches one of these, use this
 exact code — always preferred over any other code choice. The shorthand in
 brackets is how the clinician commonly refers to the diagnosis in dictation.
-This library is being built up progressively (A to J series captured so
+This library is being built up progressively (A to K series captured so
 far; more series to follow).
 
 A09 Gastroenteritis (AGE)
@@ -150,6 +150,37 @@ J69.0 Pneumonitis due to food and vomit (aspiration pneumonitis)
 J80 Adult respiratory distress syndrome (ARDS)
 J81 Pulmonary oedema
 J90 Pleural effusion
+J93.9 Pneumothorax unspecified (pneumothorax)
+J96.0 Acute respiratory failure
+J96.9 Respiratory failure unspecified (resp failure)
+J98.0 Diseases of bronchus not elsewhere classified (bronchospasm)
+K00.7 Teething syndrome (teething)
+K02.9 Dental caries unspecified (dental caries)
+K04.7 Periapical abscess without sinus (dental abscess)
+K08.8 Tooth ache (toothache)
+K21.9 Gastro-oesophageal reflux disease (GORD)
+K22.6 Gastro-oesophageal laceration-haemorrhage syndrome (Mallory Weiss tear)
+K27 Peptic ulcer site unspecified (PUD)
+K29.7 Gastritis unspecified (gastritis)
+K35 Acute appendicitis (appendicitis)
+K52.9 Noninfective gastroenteritis and colitis (diarrhoea)
+K56.6 Other and unspecified intestinal obstruction (bowel obstruction)
+K58.9 Irritable bowel syndrome (IBS-C)
+K59.0 Constipation
+K60.0 Acute anal fissure (anal fissure)
+K61.0 Anal abscess (peri-anal abscess)
+K61.2 Anorectal abscess (perianal abscess)
+K63.1 Perforation of intestine nontraumatic (bowel perforation)
+K64 Haemorrhoids and perianal venous thrombosis (piles, haemorrhoids)
+K65.0 Acute peritonitis (peritonitis)
+K65.9 Peritonitis unspecified (peritonitis, intra-abdominal sepsis)
+K72.9 Hepatic failure unspecified (liver failure)
+K74 Fibrosis and cirrhosis of liver (chronic liver disease)
+K76.9 Liver disease unspecified (liver disease)
+K80.5 Calculus of bile duct without cholangitis or cholecystitis (biliary colic)
+K80.8 Other cholelithiasis (cholelithiasis)
+K81.0 Acute cholecystitis
+K83.1 Obstruction of bile duct (obstructive jaundice)
 
 ## General SA ED Reference Codes — secondary
 
@@ -161,7 +192,6 @@ I21.4 NSTEMI
 J93.1 Spontaneous pneumothorax
 I61.9 Intracerebral haemorrhage
 G43.9 Migraine unspecified | R55 Syncope and collapse
-K92.1 Melaena | K92.0 Haematemesis | K35 Acute appendicitis
-K80.0 Cholelithiasis with acute cholecystitis
+K92.1 Melaena | K92.0 Haematemesis
 O00.9 Ectopic pregnancy unspecified | O20.0 Threatened abortion
 T14.9 Injury unspecified
