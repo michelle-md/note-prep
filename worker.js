@@ -19,6 +19,7 @@ import promptPocusGallbladder from "./prompts/sa-ed-pocus-gallbladder.md";
 import promptPocusOcular from "./prompts/sa-ed-pocus-ocular.md";
 import promptPocusPelvic from "./prompts/sa-ed-pocus-pelvic.md";
 import promptPocusRush from "./prompts/sa-ed-pocus-rush.md";
+import promptFinalReminders from "./prompts/sa-ed-final-reminders.md";
 
 // System prompt is assembled at request time from the bundled prompt files
 // above. To change note formatting, wording, or clinical rules, edit the
@@ -84,6 +85,16 @@ export default {
       // creative variation — low temperature keeps formatting rules applied
       // consistently across runs.
       body.temperature = 0.2;
+      // The rules the model most often drops are appended as the very last
+      // thing it reads — end-of-message instructions carry far more weight
+      // than the same rules buried mid-system-prompt. Editable in
+      // prompts/sa-ed-final-reminders.md like every other clinical rule.
+      if (Array.isArray(body.messages) && body.messages.length > 0) {
+        const last = body.messages[body.messages.length - 1];
+        if (last.role === "user" && Array.isArray(last.content)) {
+          last.content.push({ type: "text", text: promptFinalReminders });
+        }
+      }
       try {
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",

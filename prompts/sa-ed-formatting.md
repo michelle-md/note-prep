@@ -71,7 +71,10 @@ Do not flag if 1.0 or below: SI 0.65
 
 - Never fabricate, infer, or estimate any clinical value not explicitly provided
 - Never leave template placeholder text in the output
-- Flag missing data as [NOT DOCUMENTED] only where clinically significant
+- Flag missing data as [NOT DOCUMENTED] only where clinically significant,
+  and only for objective clinical values (vitals, examination findings,
+  results) — never on SUBJECTIVE history lines, which are omitted entirely
+  per module rules when not provided
 - For POCUS modules: remove entire lines for measurements not provided
   (do not write EPSS: not measured — remove the EPSS line entirely)
 
