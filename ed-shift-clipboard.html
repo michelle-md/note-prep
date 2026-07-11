@@ -159,6 +159,28 @@
     border-radius: 6px; padding: 12px; margin-top: 8px;
   }
   .add-entry-hint { font-size: 12px; color: #7A736C; margin-bottom: 6px; }
+  .tcl-toggle {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #7A736C; margin-top: 8px; cursor: pointer;
+  }
+  .tcl-toggle input { accent-color: #3B6B8A; }
+
+  /* TCL correction log on entries */
+  .entry-corrections {
+    border-top: 1px solid #E2DDD8; background: #FDFBF7;
+    padding: 8px 12px; font-size: 12px;
+  }
+  .corrections-title { color: #7A736C; font-weight: 600; margin-bottom: 4px; }
+  .correction-row { font-family: monospace; font-size: 12px; margin: 2px 0; color: #2C2825; }
+  .conf-high { color: #5C7A6B; }
+  .conf-medium { color: #9A6B2E; }
+  .conf-low { color: #8A4A4A; font-weight: 600; }
+  .undo-corrections-btn {
+    background: none; border: 1px solid #B5AFA9; border-radius: 4px;
+    color: #7A736C; font-size: 11px; font-family: inherit;
+    padding: 3px 10px; cursor: pointer; margin-top: 6px;
+  }
+  .undo-corrections-btn:active { background: #F0EDE8; }
 
   /* Generate section */
   .generate-section { margin-top: 24px; border-top: 1px solid #E2DDD8; padding-top: 16px; }
@@ -263,6 +285,9 @@ let state = {
   syncStatus: 'idle', // idle | saving | saved | error
   syncError: null,
   lastSyncAt: null,
+  tclEnabled: true,      // spell-check transcripts against SA EML vocabulary
+  isCorrecting: false,
+  tclNotice: null,
 };
 
 function generateId() {
@@ -452,13 +477,18 @@ function handleIterateImages(files, patientId) {
   });
 }
 
-function addIterateAndRegenerate(patientId) {
+async function addIterateAndRegenerate(patientId) {
   const text = state.iterateText;
-  if (text && text.trim()) {
-    addTextEntry(patientId, '[ITERATION] ' + text.trim());
-  }
   state.showIterate = false;
   state.iterateText = '';
+  if (text && text.trim()) {
+    const content = '[ITERATION] ' + text.trim();
+    if (state.tclEnabled) {
+      await addCorrectedTextEntry(patientId, content);
+    } else {
+      addTextEntry(patientId, content);
+    }
+  }
   generateNote(patientId);
 }
 
@@ -515,12 +545,55 @@ function deleteEntry(patientId, entryId) {
   scheduleSync(patientId);
 }
 
-function addTextEntry(patientId, text) {
+function addTextEntry(patientId, text, extra) {
   if (!text.trim()) return;
   const p = state.patients.find(p => p.id === patientId);
   if (!p) return;
-  p.entries.push({ id: generateId(), type: 'text', content: text, addedAt: new Date() });
+  p.entries.push({ id: generateId(), type: 'text', content: text, addedAt: new Date(), ...(extra || {}) });
   setState({ pendingText: '' });
+  scheduleSync(patientId);
+}
+
+// Transcript Correction Layer — sends the raw text through /api/tcl
+// (phonetic matching + LLM spelling correction against the SA EML
+// vocabulary) before adding it as an entry. Never blocks the clinical
+// workflow: any failure adds the raw text unchanged with a notice.
+async function addCorrectedTextEntry(patientId, text) {
+  setState({ isCorrecting: true, tclNotice: null });
+  try {
+    const res = await fetch('/api/tcl', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const corrections = Array.isArray(data.corrections) ? data.corrections : [];
+    state.isCorrecting = false;
+    if (corrections.length > 0) {
+      addTextEntry(patientId, data.corrected_transcript, {
+        originalContent: text,
+        corrections,
+      });
+    } else {
+      addTextEntry(patientId, text);
+    }
+  } catch(e) {
+    state.isCorrecting = false;
+    state.tclNotice = 'Spell-check unavailable — note added uncorrected';
+    addTextEntry(patientId, text);
+  }
+}
+
+function revertCorrections(patientId, entryId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  const entry = p.entries.find(e => e.id === entryId);
+  if (!entry || !entry.originalContent) return;
+  entry.content = entry.originalContent;
+  entry.originalContent = null;
+  entry.corrections = null;
+  render();
   scheduleSync(patientId);
 }
 
@@ -671,14 +744,28 @@ function renderPatientView() {
 
   let textSection = '';
   if (textEntries.length > 0) {
-    let cards = textEntries.map(e => `
+    let cards = textEntries.map(e => {
+      let correctionsBlock = '';
+      if (e.corrections && e.corrections.length > 0) {
+        const rows = e.corrections.map(c => `
+          <div class="correction-row">${esc(c.original)} → ${esc(c.corrected)} <span class="conf-${esc(c.confidence)}">(${esc(c.confidence)}${c.confidence === 'low' ? ' — verify' : ''})</span></div>`).join('');
+        correctionsBlock = `
+        <div class="entry-corrections">
+          <div class="corrections-title">${e.corrections.length} spelling correction${e.corrections.length !== 1 ? 's' : ''} applied</div>
+          ${rows}
+          <button class="undo-corrections-btn" onclick="revertCorrections('${patient.id}','${e.id}')">Undo corrections</button>
+        </div>`;
+      }
+      return `
       <div class="entry-card">
         <div class="entry-header">
           <span class="entry-timestamp">Text · ${formatTime(e.addedAt)}</span>
           <button class="delete-btn" onclick="deleteEntry('${patient.id}','${e.id}')">×</button>
         </div>
         <div class="entry-text">${esc(e.content)}</div>
-      </div>`).join('');
+        ${correctionsBlock}
+      </div>`;
+    }).join('');
     textSection = `<div class="section-label">Clinical notes (${textEntries.length})</div>${cards}`;
   }
 
@@ -701,9 +788,14 @@ function renderPatientView() {
       <textarea id="pendingText" placeholder="Paste voice transcript, type findings, or add results here..."
         oninput="state.pendingText=this.value">${esc(state.pendingText)}</textarea>
       <div class="action-row">
-        <button class="btn-small-primary" onclick="addNoteFromInput()">Add note</button>
+        <button class="btn-small-primary" onclick="addNoteFromInput()" ${state.isCorrecting ? 'disabled' : ''}>${state.isCorrecting ? 'Checking spelling...' : 'Add note'}</button>
         <button class="btn-small-secondary" onclick="document.getElementById('imageInput').click()">Add image</button>
       </div>
+      <label class="tcl-toggle">
+        <input type="checkbox" ${state.tclEnabled ? 'checked' : ''} onchange="state.tclEnabled=this.checked">
+        Spell-check medication names and acronyms (TCL)
+      </label>
+      ${state.tclNotice ? `<div class="add-entry-hint" style="color:#9A6B2E;margin-top:6px;margin-bottom:0">${esc(state.tclNotice)}</div>` : ''}
       <input type="file" id="imageInput"
         accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,application/pdf"
         multiple style="display:none"
@@ -815,10 +907,14 @@ function openPatient(id) {
   setState({ activePatientId: id, view: 'patient', pendingText: '', generateError: null });
 }
 
-function addNoteFromInput() {
+async function addNoteFromInput() {
   const text = state.pendingText;
-  if (!text.trim()) return;
-  addTextEntry(state.activePatientId, text);
+  if (!text.trim() || state.isCorrecting) return;
+  if (state.tclEnabled) {
+    await addCorrectedTextEntry(state.activePatientId, text);
+  } else {
+    addTextEntry(state.activePatientId, text);
+  }
 }
 
 // Update header clock every minute

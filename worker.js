@@ -20,6 +20,9 @@ import promptPocusOcular from "./prompts/sa-ed-pocus-ocular.md";
 import promptPocusPelvic from "./prompts/sa-ed-pocus-pelvic.md";
 import promptPocusRush from "./prompts/sa-ed-pocus-rush.md";
 import promptFinalReminders from "./prompts/sa-ed-final-reminders.md";
+import promptTclCorrection from "./prompts/sa-ed-tcl-correction.md";
+import tclVocab from "./tcl-vocab.json";
+import { buildActiveTerms, buildTermIndex, stageACandidates } from "./tcl-stage-a.js";
 
 // System prompt is assembled at request time from the bundled prompt files
 // above. To change note formatting, wording, or clinical rules, edit the
@@ -51,6 +54,11 @@ const SYSTEM_PROMPT = [
 ].join("\n\n---\n\n");
 
 const PATIENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+// TCL vocabulary is static per deploy — build the term list and phonetic
+// index once at module scope, not per request.
+const TCL_ACTIVE_TERMS = buildActiveTerms(tclVocab);
+const TCL_TERM_INDEX = buildTermIndex(TCL_ACTIVE_TERMS);
 
 export default {
   async fetch(request, env) {
@@ -109,6 +117,71 @@ export default {
         return new Response(JSON.stringify(data), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ error: { message: "API request failed: " + e.message } }), { status: 502, headers: cors });
+      }
+    }
+
+    // POST /api/tcl — Transcript Correction Layer
+    // Stage A: phonetic matching against the bundled SA EML vocabulary
+    // (deterministic, free). Stage B: LLM contextual correction via
+    // Anthropic. Returns the corrected transcript plus a correction log;
+    // the client shows every correction to the clinician with a revert.
+    if (request.method === "POST" && url.pathname === "/api/tcl") {
+      let body;
+      try { body = await request.json(); } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Invalid request body" } }), { status: 400, headers: cors });
+      }
+      const rawTranscript = typeof body.text === "string" ? body.text : "";
+      if (!rawTranscript.trim()) {
+        return new Response(JSON.stringify({ error: { message: "No text provided" } }), { status: 400, headers: cors });
+      }
+
+      const candidates = stageACandidates(rawTranscript, TCL_ACTIVE_TERMS, TCL_TERM_INDEX);
+
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-5",
+            max_tokens: 2000,
+            // Correction task, not generation — keep it deterministic
+            temperature: 0.1,
+            system: promptTclCorrection,
+            messages: [{
+              role: "user",
+              content: JSON.stringify({
+                raw_transcript: rawTranscript,
+                active_vocabulary: TCL_ACTIVE_TERMS,
+                phonetic_candidates: candidates,
+              }),
+            }],
+          }),
+        });
+        const data = await response.json();
+        if (data.error) {
+          return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
+        }
+
+        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        // Tolerate stray markdown fences despite the JSON-only instruction
+        const match = text.replace(/```(?:json)?/g, "").match(/\{[\s\S]*\}/);
+        if (!match) throw new Error("Correction response was not valid JSON");
+        const result = JSON.parse(match[0]);
+        if (typeof result.corrected_transcript !== "string") {
+          throw new Error("Correction response missing corrected_transcript");
+        }
+
+        return new Response(JSON.stringify({
+          corrected_transcript: result.corrected_transcript,
+          corrections: Array.isArray(result.corrections) ? result.corrections : [],
+          phonetic_candidates_count: candidates.length,
+        }), { headers: cors });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "TCL correction failed: " + e.message } }), { status: 502, headers: cors });
       }
     }
 

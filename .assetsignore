@@ -1,4 +1,6 @@
 prompts/
+tcl-stage-a.js
+tcl-vocab.json
 .git/
 .wrangler/
 node_modules/
