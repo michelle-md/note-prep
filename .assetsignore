@@ -1,3 +1,4 @@
+prompts/
 .git/
 .wrangler/
 node_modules/
