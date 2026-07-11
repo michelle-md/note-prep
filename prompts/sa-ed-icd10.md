@@ -37,7 +37,7 @@ These are the clinician's usual codes, taken directly from her Prometheus
 favourites list. When a documented diagnosis matches one of these, use this
 exact code — always preferred over any other code choice. The shorthand in
 brackets is how the clinician commonly refers to the diagnosis in dictation.
-This library is being built up progressively (A to I series captured so
+This library is being built up progressively (A to J series captured so
 far; more series to follow).
 
 A09 Gastroenteritis (AGE)
@@ -115,6 +115,41 @@ I44.2 Atrioventricular block complete (complete heart block)
 I45.8 Other specified conduction disorders (prolonged QT)
 I46.0 Cardiac arrest with successful resuscitation (cardiac arrest with ROSC)
 I46.9 Cardiac arrest unspecified
+I47.1 Supraventricular tachycardia (SVT)
+I47.2 Ventricular tachycardia (VT)
+I48 Atrial fibrillation and flutter (AF)
+I49.0 Ventricular fibrillation and flutter (VF)
+I49.9 Cardiac arrhythmia unspecified (arrhythmia)
+I50.9 Heart failure unspecified (heart failure)
+I62.9 Intracranial haemorrhage (haemorrhagic CVA)
+I63.9 Cerebral infarction unspecified (CVA unspecified)
+I64 Stroke not specified as haemorrhage or infarction (CVA)
+I67.4 Hypertensive encephalopathy (HPT encephalopathy)
+I70.2 Atherosclerosis of arteries of extremities (PAD)
+I74.3 Embolism and thrombosis of arteries of lower extremities (occlusion lower limb)
+I82.8 Embolism and thrombosis of other specified veins (DVT)
+I88.0 Nonspecific mesenteric lymphadenitis (mesenteric adenitis, mesenteric lymphadenitis)
+J01.9 Acute sinusitis unspecified (sinusitis)
+J02.9 Acute pharyngitis unspecified (pharyngitis)
+J03.9 Acute tonsillitis unspecified (tonsillitis)
+J05.0 Acute obstructive laryngitis (croup)
+J06.9 Acute upper respiratory infection (URTI)
+J12.8 Other viral pneumonia (viral pneumonia)
+J18.0 Bronchopneumonia unspecified (bronchopneumonia, BPN)
+J18.1 Lobar pneumonia unspecified (lobar pneumonia)
+J18.9 Pneumonia unspecified (pneumonia)
+J22 Unspecified acute lower respiratory infection (LRTI)
+J30.4 Allergic rhinitis unspecified (hayfever)
+J34.8 Other specified disorders of nose and nasal sinuses (nasal congestion)
+J36 Peritonsillar abscess (quinsy)
+J44.1 COPD with acute exacerbation (COPD exacerbation)
+J44.9 Chronic obstructive pulmonary disease unspecified (COPD)
+J45.9 Asthma unspecified (asthma exacerbation)
+J68.0 Bronchitis and pneumonitis due to chemicals (chemical pneumonitis, chemical bronchitis)
+J69.0 Pneumonitis due to food and vomit (aspiration pneumonitis)
+J80 Adult respiratory distress syndrome (ARDS)
+J81 Pulmonary oedema
+J90 Pleural effusion
 
 ## General SA ED Reference Codes — secondary
 
@@ -123,10 +158,8 @@ above always takes precedence on any overlap.
 
 I21.0 Acute transmural MI anterior wall | I21.1 Acute transmural MI inferior wall
 I21.4 NSTEMI
-I50.0 Congestive heart failure | I48 Atrial fibrillation
-J18.9 Pneumonia unspecified | J44.1 COPD with acute exacerbation
-J45.0 Allergic asthma | J93.1 Spontaneous pneumothorax
-I63.9 Cerebral infarction unspecified | I61.9 Intracerebral haemorrhage
+J93.1 Spontaneous pneumothorax
+I61.9 Intracerebral haemorrhage
 G43.9 Migraine unspecified | R55 Syncope and collapse
 K92.1 Melaena | K92.0 Haematemesis | K35 Acute appendicitis
 K80.0 Cholelithiasis with acute cholecystitis
