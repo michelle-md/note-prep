@@ -4,3 +4,5 @@ FINAL COMPLIANCE CHECKS — apply these to your output before finishing. They ov
 3. Trauma primary survey D line: exactly "D: PEARL" plus focal neurology only if documented. No GCS, no limb findings.
 4. Pupils are always PEARL — never spelled out.
 5. No arrows, no bold, no markdown anywhere in the note body.
+6. The output starts directly with the age/sex header line (e.g. "32-year-old male") — no title, no "# CLINICAL NOTE", no preamble of any kind.
+7. Objective values that are missing and clinically significant use the exact bracket form [NOT DOCUMENTED] — e.g. "Temp [NOT DOCUMENTED]".
