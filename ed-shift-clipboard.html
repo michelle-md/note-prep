@@ -15,8 +15,6 @@
     background: #F7F6F3;
     color: #2C2825;
     min-height: 100vh;
-    max-width: 480px;
-    margin: 0 auto;
   }
   #app { min-height: 100vh; }
 
@@ -29,7 +27,7 @@
     top: 0;
     z-index: 100;
   }
-  .header-row { display: flex; justify-content: space-between; align-items: center; }
+  .header-row { display: flex; justify-content: space-between; align-items: center; max-width: 1160px; margin: 0 auto; }
   .app-title { font-size: 16px; font-weight: 600; color: #2C2825; }
   .shift-label { font-size: 12px; color: #7A736C; margin-top: 2px; }
   .header-time { font-family: monospace; font-size: 13px; color: #7A736C; }
@@ -41,8 +39,8 @@
   .header-spacer { width: 48px; }
   .header-patient-label { font-size: 15px; font-weight: 600; color: #2C2825; }
 
-  /* Content */
-  .content { padding: 16px; padding-bottom: 100px; }
+  /* Content — shift view stays a narrow centred column */
+  .content { padding: 16px; padding-bottom: 100px; max-width: 520px; margin: 0 auto; }
 
   /* Patient count */
   .patient-count { font-size: 12px; color: #7A736C; margin-bottom: 12px; }
@@ -315,6 +313,66 @@
     padding: 0 2px;
   }
   .consult-a-time { font-size: 10px; color: #B5AFA9; font-family: monospace; margin-top: 4px; }
+
+  /* Patient view — two-column grid on wide screens */
+  .patient-grid {
+    display: grid; grid-template-columns: minmax(0, 1fr);
+    gap: 16px; align-items: start;
+    max-width: 1160px; margin: 0 auto;
+    padding: 16px; padding-bottom: 100px;
+  }
+  .main-col { min-width: 0; }
+  .side-col { min-width: 0; }
+  @media (min-width: 901px) {
+    .patient-grid { grid-template-columns: minmax(0, 1fr) 360px; }
+    .side-col {
+      position: sticky; top: 64px;
+      max-height: calc(100vh - 80px); overflow-y: auto;
+    }
+  }
+
+  /* Collapsible card toggle (Ask the Consultr) */
+  .card-toggle {
+    width: 100%; display: flex; justify-content: space-between; align-items: center;
+    background: #EBF2F7; color: #3B6B8A; border: 1px solid #3B6B8A;
+    border-radius: 6px; padding: 11px 14px; font-size: 14px; font-weight: 600;
+    font-family: inherit; cursor: pointer;
+  }
+  .card-toggle:active { background: #dce8f1; }
+  .card-toggle .chev { font-size: 18px; line-height: 1; font-weight: 400; }
+  .consult-card .consult-panel { margin-top: 8px; margin-bottom: 0; }
+
+  /* Clinical data input trigger */
+  .input-trigger {
+    width: 100%; display: flex; justify-content: space-between; align-items: center;
+    background: #fff; border: 1px solid #E2DDD8; border-radius: 6px;
+    padding: 12px 14px; margin-top: 14px; cursor: pointer;
+    font-family: inherit; text-align: left; gap: 8px;
+  }
+  .input-trigger:active { background: #F0EDE8; }
+  .input-trigger-title { font-size: 14px; font-weight: 600; color: #2C2825; }
+  .input-trigger-meta { font-size: 12px; color: #7A736C; white-space: nowrap; }
+
+  /* Input modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(44,40,37,0.45);
+    z-index: 400; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .modal {
+    background: #F7F6F3; border-radius: 8px;
+    max-width: 560px; width: 100%; max-height: 88vh; overflow-y: auto;
+    padding: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+  }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .modal-title { font-size: 14px; font-weight: 600; color: #2C2825; }
+  .modal-close {
+    background: none; border: none; font-size: 24px; color: #7A736C;
+    cursor: pointer; line-height: 1; padding: 0 4px;
+  }
+
+  .side-col .checks-box { margin-top: 0; }
+  .side-col .section-label { margin-top: 16px; }
 </style>
 </head>
 <body>
@@ -350,10 +408,11 @@ let state = {
   tclEnabled: true,      // spell-check transcripts against SA EML vocabulary
   isCorrecting: false,
   tclNotice: null,
-  showConsult: false,    // Ask the Consult panel open on the patient card
+  showConsult: false,    // Ask the Consultr panel open on the patient card
   consultQuestion: '',
   consultLoading: false,
   consultError: null,
+  showInput: false,      // clinical data input modal open
 };
 
 function generateId() {
@@ -600,7 +659,7 @@ async function addPatient() {
   patient.syncStatus = 'idle';
   patient.lastSyncAt = null;
   state.patients.push(patient);
-  setState({ activePatientId: patient.id, view: 'patient', showAddPatient: false, newPatientLabel: '', pendingText: '' });
+  setState({ activePatientId: patient.id, view: 'patient', showAddPatient: false, newPatientLabel: '', pendingText: '', showInput: true, showConsult: false });
   scheduleIndexSync();
   scheduleSync(patient.id);
 }
@@ -989,7 +1048,6 @@ function renderConsultPanel(patient) {
   const hasData = patient.entries && patient.entries.length > 0;
   return `
     <div class="consult-panel">
-      <div class="consult-panel-title">Ask the Consult</div>
       <div class="consult-panel-hint">${hasData
         ? "This patient's notes and images go in as context. Ask about management, differentials, dosing, or interpretation. SA-contextualised, evidence-cited."
         : 'No data on this card yet — you can still ask a general clinical question.'}</div>
@@ -1135,7 +1193,9 @@ function renderPatientView() {
       </div>`;
   }
 
-  let outputSection = '';
+  // Medical note in the main column; coding blocks live in the side column.
+  let noteSection = '';
+  let codingSection = '';
   if (patient.generatedOutput) {
     const iterateArea = state.showIterate ? `
       <div class="iterate-area">
@@ -1153,37 +1213,19 @@ function renderPatientView() {
       </div>` : '';
 
     const s = parseSections(patient.generatedOutput);
-    outputSection = `
+    noteSection = `
       <div class="output-section">
         <div class="output-header">
           <div class="output-meta">Generated ${patient.generatedAt ? formatTime(patient.generatedAt) : ''}</div>
           <button class="copy-btn" onclick="copyAll('${patient.id}')">Copy all</button>
         </div>
-
         <div class="result-block primary">
           <div class="result-block-header">
-            <span class="result-block-label">CareOn note</span>
+            <span class="result-block-label">Medical note</span>
             <button class="copy-btn" onclick="copySection('${patient.id}','note')">Copy</button>
           </div>
           <div class="output-box">${esc(s.note || '')}</div>
         </div>
-
-        <div class="result-block">
-          <div class="result-block-header">
-            <span class="result-block-label">CareOn ICD-10 code</span>
-            <button class="copy-btn" onclick="copySection('${patient.id}','careonCode')">Copy</button>
-          </div>
-          <div class="output-box">${esc(s.careonCode || '')}</div>
-        </div>
-
-        <div class="result-block">
-          <div class="result-block-header">
-            <span class="result-block-label">Prometheus coding</span>
-            <button class="copy-btn" onclick="copySection('${patient.id}','prometheusCode')">Copy</button>
-          </div>
-          <div class="output-box">${esc(s.prometheusCode || '')}</div>
-        </div>
-
         <div class="output-action-row">
           <button class="btn-iterate" onclick="setState({showIterate:!state.showIterate, iterateText:''})">
             ${state.showIterate ? 'Cancel' : 'Iterate note'}
@@ -1191,23 +1233,73 @@ function renderPatientView() {
         </div>
         ${iterateArea}
       </div>`;
+
+    codingSection = `
+      <div class="section-label">Coding</div>
+      <div class="result-block">
+        <div class="result-block-header">
+          <span class="result-block-label">CareOn ICD-10 code</span>
+          <button class="copy-btn" onclick="copySection('${patient.id}','careonCode')">Copy</button>
+        </div>
+        <div class="output-box">${esc(s.careonCode || '')}</div>
+      </div>
+      <div class="result-block">
+        <div class="result-block-header">
+          <span class="result-block-label">Prometheus coding</span>
+          <button class="copy-btn" onclick="copySection('${patient.id}','prometheusCode')">Copy</button>
+        </div>
+        <div class="output-box">${esc(s.prometheusCode || '')}</div>
+      </div>`;
   }
 
-  const consultButton = `<button class="consult-btn" onclick="toggleConsult()">${state.showConsult ? 'Close consult' : 'Ask the Consult'}</button>`;
-  const consultPanel = state.showConsult ? renderConsultPanel(patient) : '';
+  // Collapsible Ask the Consultr card
+  const consultCard = `
+    <div class="consult-card">
+      <button class="card-toggle" onclick="toggleConsult()">
+        <span>Ask the Consultr</span>
+        <span class="chev">${state.showConsult ? '−' : '+'}</span>
+      </button>
+      ${state.showConsult ? renderConsultPanel(patient) : ''}
+    </div>`;
+
+  // Clinical data input — collapsible centred pop-up
+  const entryCount = patient.entries.length;
+  const inputTrigger = `
+    <button class="input-trigger" onclick="setState({showInput:true})">
+      <span class="input-trigger-title">Clinical data input</span>
+      <span class="input-trigger-meta">${entryCount} item${entryCount !== 1 ? 's' : ''} · tap to add</span>
+    </button>`;
+
+  const inputModal = state.showInput ? `
+    <div class="modal-backdrop" onclick="if(event.target===this)setState({showInput:false})">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="modal-title">Clinical data — ${esc(patient.label)}</span>
+          <button class="modal-close" onclick="setState({showInput:false})">×</button>
+        </div>
+        ${textSection}
+        ${imageSection}
+        ${addArea}
+        <button class="btn-secondary" onclick="setState({showInput:false})">Done</button>
+      </div>
+    </div>` : '';
+
   const checksBox = `<div id="checksContainer">${renderChecksBox(patient)}</div>`;
 
   return `
-    <div class="content">
-      ${consultButton}
-      ${consultPanel}
-      ${textSection}
-      ${imageSection}
-      ${addArea}
-      ${checksBox}
-      ${generateArea}
-      ${outputSection}
-    </div>`;
+    <div class="patient-grid">
+      <div class="main-col">
+        ${consultCard}
+        ${inputTrigger}
+        ${generateArea}
+        ${noteSection}
+      </div>
+      <aside class="side-col">
+        ${checksBox}
+        ${codingSection}
+      </aside>
+    </div>
+    ${inputModal}`;
 }
 
 function renderHeader() {
@@ -1250,10 +1342,13 @@ function render() {
 }
 
 function openPatient(id) {
-  setState({ activePatientId: id, view: 'patient', pendingText: '', generateError: null, showConsult: false, consultQuestion: '', consultError: null });
+  const p = state.patients.find(p => p.id === id);
+  // Open the input modal automatically on an empty card; on a card with data,
+  // land on the overview and let the clinician open input when needed.
+  const showInput = !!p && p.entries.length === 0;
+  setState({ activePatientId: id, view: 'patient', pendingText: '', generateError: null, showConsult: false, consultQuestion: '', consultError: null, showInput });
   // Refresh the live checks for a card that already has data (deduped — skips
   // the API call if nothing has changed since the last check).
-  const p = state.patients.find(p => p.id === id);
   if (p && p.entries.length > 0) scheduleLiveCheck(id);
 }
 
