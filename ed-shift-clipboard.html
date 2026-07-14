@@ -264,17 +264,19 @@
   }
   .result-block.primary .result-block-label { color: #3B6B8A; }
 
-  /* Checks box — live missing data + red flags */
+  /* Live checks — separate red flags and missing data boxes */
   .checks-box {
     background: #fff; border: 1px solid #E2DDD8; border-left: 3px solid #9A6B2E;
-    border-radius: 6px; padding: 12px 14px; margin-top: 16px;
+    border-radius: 6px; padding: 12px 14px; margin-bottom: 10px;
   }
-  .checks-header {
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 8px; margin-bottom: 8px;
+  .checks-box.flags-box { border-left-color: #8A4A4A; }
+  .checks-group-header {
+    display: flex; justify-content: flex-end; align-items: center;
+    gap: 8px; margin-bottom: 6px;
   }
-  .checks-title { font-size: 12px; font-weight: 600; color: #2C2825; }
-  .checks-right { display: flex; align-items: center; gap: 8px; }
+  .checks-title { font-size: 12px; font-weight: 600; color: #2C2825; margin-bottom: 6px; }
+  .checks-title.flags-title { color: #8A4A4A; }
+  .checks-title.missing-title { color: #9A6B2E; }
   .checks-meta { font-size: 11px; color: #7A736C; font-family: monospace; }
   .checks-body {
     font-size: 13px; font-family: monospace; color: #2C2825;
@@ -371,7 +373,6 @@
     cursor: pointer; line-height: 1; padding: 0 4px;
   }
 
-  .side-col .checks-box { margin-top: 0; }
   .side-col .section-label { margin-top: 16px; }
 </style>
 </head>
@@ -1060,6 +1061,26 @@ function renderConsultPanel(patient) {
     </div>`;
 }
 
+// Split a live-check response into its MISSING and RED FLAGS sections.
+// Anything before a recognised heading lands in red flags so unstructured
+// output stays visible in the most prominent box.
+function splitLiveCheck(text) {
+  const out = { missing: '', flags: '' };
+  if (!text) return out;
+  const missingLines = [];
+  const flagLines = [];
+  let cur = 'f';
+  text.split('\n').forEach(ln => {
+    const t = ln.trim();
+    if (/^MISSING\b/i.test(t) && t.length < 20) { cur = 'm'; return; }
+    if (/^RED FLAGS\b/i.test(t) && t.length < 20) { cur = 'f'; return; }
+    if (cur === 'm') missingLines.push(ln); else flagLines.push(ln);
+  });
+  out.missing = missingLines.join('\n').trim();
+  out.flags = flagLines.join('\n').trim();
+  return out;
+}
+
 function renderChecksBox(patient) {
   const hasEntries = patient.entries && patient.entries.length > 0;
   const gen = patient.generatedOutput ? parseSections(patient.generatedOutput) : null;
@@ -1073,22 +1094,33 @@ function renderChecksBox(patient) {
   if (gen && genAt && (!liveAt || genAt >= liveAt)) source = 'gen';
   else if (live) source = 'live';
 
-  let body = '';
+  let missing = null;
+  let flags = null;
   let metaLabel = '';
   if (source === 'gen') {
-    const missing = (gen.missing || '').trim() || 'No obvious gaps.';
-    const flags = (gen.flags || '').trim() || 'No clinical flags.';
-    body = `<div class="checks-body">${esc('MISSING\n' + missing + '\n\nCLINICAL FLAGS\n' + flags)}</div>`;
+    missing = (gen.missing || '').trim() || 'No obvious gaps.';
+    flags = (gen.flags || '').trim() || 'No clinical flags.';
     metaLabel = 'from note ' + (genAt ? formatTime(genAt) : '');
   } else if (source === 'live') {
-    body = `<div class="checks-body">${esc(live.text || '')}</div>`;
+    const s = splitLiveCheck(live.text);
+    missing = s.missing || 'No obvious gaps.';
+    flags = s.flags || 'None evident.';
     metaLabel = (patient.liveCheckLoading ? 'updating… ' : 'live ') + (liveAt ? formatTime(liveAt) : '');
+  }
+
+  let flagsBody;
+  let missingBody;
+  if (flags !== null) {
+    flagsBody = `<div class="checks-body">${esc(flags)}</div>`;
+    missingBody = `<div class="checks-body">${esc(missing)}</div>`;
   } else if (patient.liveCheckLoading) {
-    body = '<div class="checks-empty">Checking…</div>';
+    flagsBody = missingBody = '<div class="checks-empty">Checking…</div>';
   } else if (!hasEntries) {
-    body = '<div class="checks-empty">Add notes or a photo — missing data and red flags will appear here as you go.</div>';
+    flagsBody = '<div class="checks-empty">Red flags evident in the data will appear here as you add it.</div>';
+    missingBody = '<div class="checks-empty">Data still needed for a complete note will appear here.</div>';
   } else {
-    body = `<div class="checks-empty">${esc(patient.liveCheckError || 'Checking…')}</div>`;
+    const errTxt = esc(patient.liveCheckError || 'Checking…');
+    flagsBody = missingBody = `<div class="checks-empty">${errTxt}</div>`;
   }
 
   const refreshBtn = hasEntries
@@ -1096,15 +1128,19 @@ function renderChecksBox(patient) {
     : '';
 
   return `
-    <div class="checks-box">
-      <div class="checks-header">
-        <span class="checks-title">Missing data &amp; clinical flags</span>
-        <span class="checks-right">
-          <span class="checks-meta">${esc(metaLabel)}</span>
-          ${refreshBtn}
-        </span>
+    <div class="checks-group">
+      <div class="checks-group-header">
+        <span class="checks-meta">${esc(metaLabel)}</span>
+        ${refreshBtn}
       </div>
-      ${body}
+      <div class="checks-box flags-box">
+        <div class="checks-title flags-title">Red flags</div>
+        ${flagsBody}
+      </div>
+      <div class="checks-box missing-box">
+        <div class="checks-title missing-title">Missing data</div>
+        ${missingBody}
+      </div>
     </div>`;
 }
 
