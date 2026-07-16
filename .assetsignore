@@ -1,4 +1,6 @@
 prompts/
+worker.js
+wrangler.jsonc
 tcl-stage-a.js
 tcl-vocab.json
 .git/
