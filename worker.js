@@ -137,6 +137,16 @@ export default {
 
       const candidates = stageACandidates(rawTranscript, TCL_ACTIVE_TERMS, TCL_TERM_INDEX);
 
+      // Stage B gets a scoped vocabulary, not the full store: the phonetic
+      // candidates found by Stage A plus the (small) acronym library. The
+      // full store is 4,000+ terms — sending it on every call would cost
+      // ~10k tokens per note add for no accuracy gain, since Stage A has
+      // already matched against all of it locally.
+      const scopedVocabulary = [
+        ...tclVocab.acronyms.map(a => `${a.acronym} = ${a.full_phrase}`),
+        ...candidates.map(c => c.vocabulary_match),
+      ];
+
       try {
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -155,7 +165,7 @@ export default {
               role: "user",
               content: JSON.stringify({
                 raw_transcript: rawTranscript,
-                active_vocabulary: TCL_ACTIVE_TERMS,
+                active_vocabulary: scopedVocabulary,
                 phonetic_candidates: candidates,
               }),
             }],
