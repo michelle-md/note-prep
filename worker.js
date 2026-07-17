@@ -21,6 +21,8 @@ import promptPocusPelvic from "./prompts/sa-ed-pocus-pelvic.md";
 import promptPocusRush from "./prompts/sa-ed-pocus-rush.md";
 import promptFinalReminders from "./prompts/sa-ed-final-reminders.md";
 import promptTclCorrection from "./prompts/sa-ed-tcl-correction.md";
+import promptLiveCheck from "./prompts/sa-ed-live-check.md";
+import promptConsult from "./prompts/sa-ed-consult.md";
 import tclVocab from "./tcl-vocab.json";
 import { buildActiveTerms, buildTermIndex, stageACandidates } from "./tcl-stage-a.js";
 
@@ -50,7 +52,29 @@ const SYSTEM_PROMPT = [
   promptPocusOcular,
   promptPocusPelvic,
   promptPocusRush,
-  "FINAL OUTPUT STRUCTURE:\n[SOAP note]\n---\n[ICD-10 codes block]\n---\n[Billing suggestions block]\n[Clinical flags — missing data, drug interactions, incidental findings]",
+  // Output is split into labelled sections so the clipboard can show each one
+  // in its own copyable box (CareOn note, CareOn ICD code, Prometheus codes,
+  // and the flags/missing checklist). Each marker sits alone on its own line so
+  // the client can split on it reliably.
+  [
+    "FINAL OUTPUT STRUCTURE:",
+    "Output the following five sections in this exact order. Each section marker below must appear alone on its own line, spelled exactly as shown, with nothing else on that line. Do not write any text before the first marker, and do not repeat a marker.",
+    "",
+    "@@NOTE@@",
+    "The SOAP note body exactly as specified in the rules above. This is the text that is pasted into the CareOn journal. Do NOT put any ICD-10 codes or billing codes in this section.",
+    "",
+    "@@CAREON_CODE@@",
+    "The ICD-10 coding for the CareOn ED Notes tab. First line: CareOn ED Notes tab primary code: [Code]. Then each relevant code and its description on its own line. Confirmed diagnoses only.",
+    "",
+    "@@PROMETHEUS_CODE@@",
+    "The Prometheus practice-management coding. First the billing suggestions block (clinician confirmation required before submission), each code with its basis on its own line. Then a final line: Prometheus ICD-10: [Code] [Code] [Code] (space-separated).",
+    "",
+    "@@FLAGS@@",
+    "Clinical flags: red flags, elevated shock index, critical values, drug interactions, and incidental findings evident in the data. One per line. If there are none, write exactly: No clinical flags.",
+    "",
+    "@@MISSING@@",
+    "Missing or ambiguous clinical data worth completing before disposition. One per line. If there are none, write exactly: No obvious gaps.",
+  ].join("\n"),
 ].join("\n\n---\n\n");
 
 const PATIENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
@@ -192,6 +216,85 @@ export default {
         }), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ error: { message: "TCL correction failed: " + e.message } }), { status: 502, headers: cors });
+      }
+    }
+
+    // POST /api/live-check — lightweight, non-authoritative "what's missing /
+    // any red flags" scan run continuously while the clinician is still adding
+    // data. Uses a fast model and its own system prompt (prompts/sa-ed-live-check.md)
+    // — deliberately NOT the note-generation prompt. The client sends only the
+    // patient content array; the system prompt and model are fixed server-side.
+    if (request.method === "POST" && url.pathname === "/api/live-check") {
+      let body;
+      try { body = await request.json(); } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Invalid request body" } }), { status: 400, headers: cors });
+      }
+      const content = Array.isArray(body.content) ? body.content : [];
+      if (content.length === 0) {
+        return new Response(JSON.stringify({ text: "" }), { headers: cors });
+      }
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            // Fast/cheap model — this runs repeatedly as data is entered.
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 700,
+            temperature: 0.2,
+            system: promptLiveCheck,
+            messages: [{ role: "user", content }],
+          }),
+        });
+        const data = await response.json();
+        if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
+        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        return new Response(JSON.stringify({ text }), { headers: cors });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Live check failed: " + e.message } }), { status: 502, headers: cors });
+      }
+    }
+
+    // POST /api/consult — "Ask the Consult" clinical decision support. Uses the
+    // clinical-guidance system prompt (prompts/sa-ed-consult.md), NOT the note
+    // generator. The client sends the full messages thread (patient context in
+    // the first user turn, then alternating question/answer turns); the system
+    // prompt and model are fixed server-side.
+    if (request.method === "POST" && url.pathname === "/api/consult") {
+      let body;
+      try { body = await request.json(); } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Invalid request body" } }), { status: 400, headers: cors });
+      }
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      if (messages.length === 0) {
+        return new Response(JSON.stringify({ error: { message: "No question provided" } }), { status: 400, headers: cors });
+      }
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-5",
+            max_tokens: 2000,
+            temperature: 0.3,
+            system: promptConsult,
+            messages,
+          }),
+        });
+        const data = await response.json();
+        if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
+        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        return new Response(JSON.stringify({ text }), { headers: cors });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Consult failed: " + e.message } }), { status: 502, headers: cors });
       }
     }
 
