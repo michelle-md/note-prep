@@ -263,6 +263,22 @@
     letter-spacing: 0.08em; text-transform: uppercase;
   }
   .result-block.primary .result-block-label { color: #3B6B8A; }
+  .result-block.dosing-block .output-box { border-left: 3px solid #5C7A6B; }
+  .result-block-label.dosing-label { color: #5C7A6B; }
+
+  /* Delete a single patient card */
+  .card-delete-btn {
+    background: none; border: none; color: #B5AFA9;
+    cursor: pointer; font-size: 22px; line-height: 1; padding: 0 4px;
+  }
+  .card-delete-btn:active { color: #8A4A4A; }
+  .delete-card-btn {
+    background: none; border: 1px solid #8A4A4A; border-radius: 4px;
+    color: #8A4A4A; font-size: 12px; font-weight: 500;
+    font-family: inherit; padding: 8px 14px; cursor: pointer;
+    margin-top: 20px; width: 100%;
+  }
+  .delete-card-btn:active { background: #F7EDED; }
 
   /* Live checks — separate red flags and missing data boxes */
   .checks-box {
@@ -588,6 +604,34 @@ async function endShift() {
   render();
 }
 
+// Delete a single patient card — for cards created in error. Removes only this
+// patient; the rest of the shift is untouched. Distinct from End shift, which
+// wipes everything.
+async function deletePatient(patientId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  if (!confirm('Delete patient card "' + p.label + '"? This removes the card and all its notes, images and output. This cannot be undone.')) return;
+
+  // Optimistic local removal, then persist.
+  clearTimeout(patientSyncTimers[patientId]);
+  clearTimeout(liveCheckTimers[patientId]);
+  state.patients = state.patients.filter(x => x.id !== patientId);
+  if (state.activePatientId === patientId) {
+    state.activePatientId = null;
+    state.view = 'shift';
+  }
+  render();
+
+  try {
+    await fetch('/api/patient/' + patientId, { method: 'DELETE' });
+  } catch(e) {
+    // Server delete failed — the card is gone locally; the index resave below
+    // still drops it, and the record's 24h TTL expires it regardless.
+  }
+  // Resave the shift index so the deleted id does not reappear on reload.
+  scheduleIndexSync();
+}
+
 function updateSyncIndicator() {}
 
 function copySoap(patientId) {
@@ -773,11 +817,12 @@ function buildPatientContent(patient) {
 }
 
 // Split a generated note into its labelled sections. Robust to markers being
-// out of order or missing. If no @@NOTE@@ marker is present at all (e.g. an
-// older note generated before this format, or a malformed response), the whole
-// text degrades gracefully into the note box rather than throwing.
+// out of order, missing, or duplicated (the model occasionally repeats a
+// marker). If no @@NOTE@@ marker is present at all (e.g. an older note generated
+// before this format, or a malformed response), the whole text degrades
+// gracefully into the note box rather than throwing.
 function parseSections(raw) {
-  const out = { note: '', careonCode: '', prometheusCode: '', flags: '', missing: '' };
+  const out = { note: '', dosing: '', careonCode: '', prometheusCode: '', flags: '', missing: '' };
   if (!raw) return out;
   if (!raw.includes('@@NOTE@@')) {
     out.note = raw.trim();
@@ -785,6 +830,7 @@ function parseSections(raw) {
   }
   const markers = [
     ['@@NOTE@@', 'note'],
+    ['@@DOSING@@', 'dosing'],
     ['@@CAREON_CODE@@', 'careonCode'],
     ['@@PROMETHEUS_CODE@@', 'prometheusCode'],
     ['@@FLAGS@@', 'flags'],
@@ -795,8 +841,11 @@ function parseSections(raw) {
     if (start === -1) continue;
     const from = start + markers[i][0].length;
     let end = raw.length;
+    // The section ends at the nearest subsequent marker of ANY kind — including
+    // a repeat of this same marker. That last part matters: if the model emits
+    // e.g. @@DOSING@@ twice, we keep only the first copy and the duplicate is
+    // dropped, instead of both copies (and the stray marker) landing in one box.
     for (let j = 0; j < markers.length; j++) {
-      if (j === i) continue;
       const idx = raw.indexOf(markers[j][0], from);
       if (idx !== -1 && idx < end) end = idx;
     }
@@ -1005,7 +1054,10 @@ function renderShiftView() {
           <div class="patient-meta">${p.entries.length} item${p.entries.length !== 1 ? 's' : ''} · Added ${formatTime(p.createdAt)}</div>
           <div id="sync_${p.id}" style="font-size:11px;font-family:monospace;color:${syncColor};margin-top:2px">${syncText}</div>
         </div>
-        ${pill}
+        <div style="display:flex;align-items:center;gap:8px">
+          ${pill}
+          <button class="card-delete-btn" title="Delete card" aria-label="Delete card" onclick="event.stopPropagation();deletePatient('${p.id}')">×</button>
+        </div>
       </div>`;
   });
 
@@ -1262,6 +1314,14 @@ function renderPatientView() {
           </div>
           <div class="output-box">${esc(s.note || '')}</div>
         </div>
+        ${s.dosing && s.dosing.trim() && s.dosing.trim().toLowerCase() !== 'no dosing to calculate.' ? `
+        <div class="result-block dosing-block">
+          <div class="result-block-header">
+            <span class="result-block-label dosing-label">Dosing</span>
+            <button class="copy-btn" onclick="copySection('${patient.id}','dosing')">Copy</button>
+          </div>
+          <div class="output-box">${esc(s.dosing)}</div>
+        </div>` : ''}
         <div class="output-action-row">
           <button class="btn-iterate" onclick="setState({showIterate:!state.showIterate, iterateText:''})">
             ${state.showIterate ? 'Cancel' : 'Iterate note'}
@@ -1329,6 +1389,7 @@ function renderPatientView() {
         ${inputTrigger}
         ${generateArea}
         ${noteSection}
+        <button class="delete-card-btn" onclick="deletePatient('${patient.id}')">Delete this card</button>
       </div>
       <aside class="side-col">
         ${checksBox}

@@ -5,6 +5,7 @@ import promptTrauma from "./prompts/sa-ed-trauma.md";
 import promptPaediatric from "./prompts/sa-ed-paediatric.md";
 import promptObsGynae from "./prompts/sa-ed-obs-gynae.md";
 import promptSurgery from "./prompts/sa-ed-surgery.md";
+import promptDosing from "./prompts/sa-ed-dosing.md";
 import promptDecisionTools from "./prompts/sa-ed-decision-tools.md";
 import promptBilling from "./prompts/sa-ed-billing.md";
 import promptIcd10 from "./prompts/sa-ed-icd10.md";
@@ -25,6 +26,8 @@ import promptLiveCheck from "./prompts/sa-ed-live-check.md";
 import promptConsult from "./prompts/sa-ed-consult.md";
 import tclVocab from "./tcl-vocab.json";
 import { buildActiveTerms, buildTermIndex, stageACandidates } from "./tcl-stage-a.js";
+import formulary from "./ed-formulary.json";
+import { buildFormularyIndex, matchFormularyDrugs, formatFormularyForPrompt } from "./formulary.js";
 
 // System prompt is assembled at request time from the bundled prompt files
 // above. To change note formatting, wording, or clinical rules, edit the
@@ -38,6 +41,7 @@ const SYSTEM_PROMPT = [
   promptPaediatric,
   promptObsGynae,
   promptSurgery,
+  promptDosing,
   promptDecisionTools,
   promptBilling,
   promptIcd10,
@@ -58,10 +62,13 @@ const SYSTEM_PROMPT = [
   // the client can split on it reliably.
   [
     "FINAL OUTPUT STRUCTURE:",
-    "Output the following five sections in this exact order. Each section marker below must appear alone on its own line, spelled exactly as shown, with nothing else on that line. Do not write any text before the first marker, and do not repeat a marker.",
+    "Output the following six sections in this exact order. Each section marker below must appear alone on its own line, spelled exactly as shown, with nothing else on that line. Do not write any text before the first marker, and do not repeat a marker.",
     "",
     "@@NOTE@@",
-    "The SOAP note body exactly as specified in the rules above. This is the text that is pasted into the CareOn journal. Do NOT put any ICD-10 codes or billing codes in this section.",
+    "The SOAP note body exactly as specified in the rules above. This is the text that is pasted into the CareOn journal. Do NOT put any ICD-10 codes, billing codes, or the dosing table in this section.",
+    "",
+    "@@DOSING@@",
+    "The dosing section exactly as specified in the sa-ed-dosing rules: the paediatric weight-based table for any patient under 40 kg, and the formulary/documented doses for medications given or prescribed. Follow the absolute safety rule — only clinician-documented doses or doses from the VERIFIED SA FORMULARY DOSES block; never a dose from your own knowledge. If nothing applies, write exactly: No dosing to calculate.",
     "",
     "@@CAREON_CODE@@",
     "The ICD-10 coding for the CareOn ED Notes tab. First line: CareOn ED Notes tab primary code: [Code]. Then each relevant code and its description on its own line. Confirmed diagnoses only.",
@@ -83,6 +90,27 @@ const PATIENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
 // index once at module scope, not per request.
 const TCL_ACTIVE_TERMS = buildActiveTerms(tclVocab);
 const TCL_TERM_INDEX = buildTermIndex(TCL_ACTIVE_TERMS);
+
+// Verified-only SA EML dose index — built once. Used to scope the formulary
+// down to the drugs mentioned in a note so the model receives real doses to
+// draw the DOSING section from, never inventing one from its own knowledge.
+const FORMULARY_INDEX = buildFormularyIndex(formulary);
+
+// Pull all plain-text out of an Anthropic messages array (ignores images) so we
+// can scan it for drug names.
+function extractMessageText(messages) {
+  if (!Array.isArray(messages)) return "";
+  const parts = [];
+  for (const m of messages) {
+    if (typeof m.content === "string") { parts.push(m.content); continue; }
+    if (Array.isArray(m.content)) {
+      for (const c of m.content) {
+        if (c && c.type === "text" && typeof c.text === "string") parts.push(c.text);
+      }
+    }
+  }
+  return parts.join("\n");
+}
 
 export default {
   async fetch(request, env) {
@@ -124,6 +152,16 @@ export default {
       if (Array.isArray(body.messages) && body.messages.length > 0) {
         const last = body.messages[body.messages.length - 1];
         if (last.role === "user" && Array.isArray(last.content)) {
+          // Scope the verified formulary to the drugs actually mentioned and
+          // hand the model those real doses to build the DOSING section from.
+          // This is the mechanism that lets the "never invent a dose" rule hold:
+          // the model is given the only doses it is permitted to state.
+          const matches = matchFormularyDrugs(extractMessageText(body.messages), FORMULARY_INDEX);
+          const doseBlock = formatFormularyForPrompt(matches);
+          if (doseBlock) {
+            last.content.push({ type: "text", text:
+              "VERIFIED SA FORMULARY DOSES (clinician-verified; the ONLY doses you may state in the DOSING section besides doses the clinician documented — do not use any dose from your own knowledge):\n" + doseBlock });
+          }
           last.content.push({ type: "text", text: promptFinalReminders });
         }
       }
@@ -370,6 +408,34 @@ export default {
       try {
         const body = await request.text();
         await env.SHIFT_STORE.put("patient_" + patientId, body, { expirationTtl: 86400 });
+        return new Response(JSON.stringify({ ok: true }), { headers: cors });
+      } catch(e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: cors });
+      }
+    }
+
+    // DELETE /api/patient/:id — delete a single patient card (created in error,
+    // or otherwise no longer wanted). Removes the patient record and drops the
+    // id from the shift index. Does not touch any other patient.
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/patient/")) {
+      const patientId = url.pathname.replace("/api/patient/", "");
+      if (!patientId || !PATIENT_ID_RE.test(patientId)) {
+        return new Response(JSON.stringify({ ok: false, error: "Invalid patient id" }), { status: 400, headers: cors });
+      }
+      try {
+        await env.SHIFT_STORE.delete("patient_" + patientId);
+        // Drop the id from the shift index if present
+        const indexRaw = await env.SHIFT_STORE.get("shift_index");
+        if (indexRaw) {
+          try {
+            const index = JSON.parse(indexRaw);
+            if (Array.isArray(index.patientIds)) {
+              index.patientIds = index.patientIds.filter(id => id !== patientId);
+              index.updatedAt = new Date().toISOString();
+              await env.SHIFT_STORE.put("shift_index", JSON.stringify(index), { expirationTtl: 86400 });
+            }
+          } catch(e) { /* index rebuilds itself on next load */ }
+        }
         return new Response(JSON.stringify({ ok: true }), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: cors });

@@ -3,6 +3,8 @@ worker.js
 wrangler.jsonc
 tcl-stage-a.js
 tcl-vocab.json
+formulary.js
+ed-formulary.json
 .git/
 .wrangler/
 node_modules/

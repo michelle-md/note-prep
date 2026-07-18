@@ -28,6 +28,26 @@ All other SA ED skills inherit and apply these rules.
 
 ---
 
+## SOAP Skeleton — Universal
+
+Every note body uses the SOAP structure. The four core headings must always be
+present, spelled in capitals, each on its own line, and in this order:
+SUBJECTIVE, OBJECTIVE, ASSESSMENT, PLAN. The interposed sections defined by the
+active template (SPECIAL INVESTIGATIONS, TREATMENT IN THE ED, PROCEDURES
+PERFORMED IN THE ED) sit between OBJECTIVE and ASSESSMENT where applicable.
+
+Never omit, rename, merge, or reorder the four core SOAP headings, and never
+emit the note as free prose without them.
+
+The ONLY exception is a trauma presentation, which follows the trauma template
+skeleton instead (header, then Mechanism of injury, then SUBJECTIVE, then
+OBJECTIVE with the ATLS primary survey and secondary survey, then the
+investigation/treatment/procedure sections, then ASSESSMENT and PLAN). Use the
+trauma skeleton only for traumatic presentations; every non-trauma note uses the
+standard SOAP skeleton above.
+
+---
+
 ## List Formatting
 
 Pipe-separated format for all inline lists:
