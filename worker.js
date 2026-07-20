@@ -27,7 +27,7 @@ import promptConsult from "./prompts/sa-ed-consult.md";
 import tclVocab from "./tcl-vocab.json";
 import { buildActiveTerms, buildTermIndex, stageACandidates } from "./tcl-stage-a.js";
 import formulary from "./ed-formulary.json";
-import { buildFormularyIndex, matchFormularyDrugs, formatFormularyForPrompt } from "./formulary.js";
+import { buildFormularyIndex, matchFormularyDrugs, matchMentionedDrugs, formatFormularyForPrompt } from "./formulary.js";
 
 // System prompt is assembled at request time from the bundled prompt files
 // above. To change note formatting, wording, or clinical rules, edit the
@@ -156,11 +156,19 @@ export default {
           // hand the model those real doses to build the DOSING section from.
           // This is the mechanism that lets the "never invent a dose" rule hold:
           // the model is given the only doses it is permitted to state.
-          const matches = matchFormularyDrugs(extractMessageText(body.messages), FORMULARY_INDEX);
-          const doseBlock = formatFormularyForPrompt(matches);
+          const mentioned = matchMentionedDrugs(extractMessageText(body.messages), FORMULARY_INDEX);
+          const doseBlock = formatFormularyForPrompt(mentioned.verified);
           if (doseBlock) {
             last.content.push({ type: "text", text:
               "VERIFIED SA FORMULARY DOSES (clinician-verified; the ONLY doses you may state in the DOSING section besides doses the clinician documented — do not use any dose from your own knowledge):\n" + doseBlock });
+          }
+          if (mentioned.unverified.length > 0) {
+            const lines = mentioned.unverified.map(u =>
+              u.mention.toLowerCase() === u.generic.toLowerCase()
+                ? u.generic
+                : u.mention + " = " + u.generic).join("\n");
+            last.content.push({ type: "text", text:
+              "MEDICATIONS MENTIONED WITH NO VERIFIED SA FORMULARY DOSE (list each in the DOSING section — use the clinician's documented dose if one was given, otherwise flag it for manual verification; never supply a dose yourself):\n" + lines });
           }
           last.content.push({ type: "text", text: promptFinalReminders });
         }
@@ -270,7 +278,7 @@ export default {
       }
       const text = typeof body.text === "string" ? body.text : "";
       if (!text.trim()) {
-        return new Response(JSON.stringify({ weight: null, paedTable: [], drugs: [] }), { headers: cors });
+        return new Response(JSON.stringify({ weight: null, paedTable: [], drugs: [], unverified: [] }), { headers: cors });
       }
 
       // First "<number> kg" in the notes is taken as the documented weight.
@@ -292,8 +300,15 @@ export default {
         );
       }
 
-      const drugs = matchFormularyDrugs(text, FORMULARY_INDEX);
-      return new Response(JSON.stringify({ weight, paedTable, drugs }), { headers: cors });
+      // Every recognised medication is returned: `drugs` carry verified SA
+      // doses; `unverified` are recognised mentions (brand or generic) with no
+      // verified dose — the client lists them with a verify-manually line.
+      const mentioned = matchMentionedDrugs(text, FORMULARY_INDEX);
+      return new Response(JSON.stringify({
+        weight, paedTable,
+        drugs: mentioned.verified,
+        unverified: mentioned.unverified,
+      }), { headers: cors });
     }
 
     // POST /api/live-check — lightweight, non-authoritative "what's missing /

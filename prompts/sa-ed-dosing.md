@@ -30,8 +30,10 @@ Do not show this table for any patient 40 kg or over.
 
 ## Part 2 — Formulary doses for medications mentioned
 
-For every medication given in the ED, or prescribed on discharge or admission,
-show its dose. Use ONLY doses the clinician documented, or the verified doses
+Every medication mentioned as given in the ED, or prescribed on discharge or
+admission, is LISTED here — none is silently omitted. When the clinician used a
+brand name, write the brand with the generic in brackets, e.g. Perfalgan
+(paracetamol), Xefo (lornoxicam). Use ONLY doses the clinician documented, or the verified doses
 supplied to you in the "VERIFIED SA FORMULARY DOSES" block for this patient.
 Apply these rules in priority order:
 

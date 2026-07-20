@@ -967,7 +967,7 @@ async function runLiveDosing(patientId) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message || 'Dosing scan failed');
-    patient.liveDosing = { weight: data.weight, paedTable: data.paedTable || [], drugs: data.drugs || [], at: new Date() };
+    patient.liveDosing = { weight: data.weight, paedTable: data.paedTable || [], drugs: data.drugs || [], unverified: data.unverified || [], at: new Date() };
     if (state.activePatientId === patientId) updateDosingBox(patientId);
     scheduleSync(patientId);
   } catch(e) {
@@ -1016,6 +1016,15 @@ function formatLiveDosing(ld) {
       if (d.max_dose) bits.push('max ' + d.max_dose);
       lines.push(bits.join(', '));
     });
+  });
+  // Recognised medications with no verified SA formulary dose are still
+  // listed — with an explicit verify-manually line, never a guessed dose.
+  (ld.unverified || []).forEach(u => {
+    if (lines.length > 0) lines.push('');
+    const name = u.mention.toLowerCase() === u.generic.toLowerCase()
+      ? u.generic
+      : u.mention + ' (' + u.generic.toLowerCase() + ')';
+    lines.push(name + ': no verified SA formulary dose — use documented dose / verify manually');
   });
   return lines.join('\n').trim();
 }
