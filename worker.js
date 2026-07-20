@@ -257,6 +257,45 @@ export default {
       }
     }
 
+    // POST /api/dosing — live dosing scan. Fully deterministic: extracts a
+    // documented weight, computes the paediatric weight-based table for a child
+    // under 40 kg, and matches mentioned drugs against the verified SA EML
+    // formulary. No LLM involved, so it is instant, free, and can never invent
+    // a dose — it only ever returns the clinician's own formulas and verified
+    // formulary entries. The client re-runs this as data is entered.
+    if (request.method === "POST" && url.pathname === "/api/dosing") {
+      let body;
+      try { body = await request.json(); } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Invalid request body" } }), { status: 400, headers: cors });
+      }
+      const text = typeof body.text === "string" ? body.text : "";
+      if (!text.trim()) {
+        return new Response(JSON.stringify({ weight: null, paedTable: [], drugs: [] }), { headers: cors });
+      }
+
+      // First "<number> kg" in the notes is taken as the documented weight.
+      const wm = text.match(/(\d{1,3}(?:[.,]\d{1,2})?)\s*kg\b/i);
+      let weight = wm ? parseFloat(wm[1].replace(",", ".")) : null;
+      if (weight !== null && (!isFinite(weight) || weight <= 0 || weight > 300)) weight = null;
+
+      // Clinician-defined volume formulas (Clinical Specification 9.3) — only
+      // for a documented weight under 40 kg.
+      const paedTable = [];
+      if (weight !== null && weight < 40) {
+        const r1 = v => (Math.round(v * 10) / 10).toFixed(1);
+        paedTable.push(
+          { drug: "Paracetamol (Calpol)", dose: r1(weight * 0.625) + " ml" },
+          { drug: "Nurofen (Ibuprofen)", dose: r1(weight * 0.5) + " ml" },
+          { drug: "Aspelone (Prednisolone)", dose: r1(weight / 6) + " ml" },
+          { drug: "Augmentin (Amoxicillin-clavulanate)", dose: r1(weight * 0.375) + " ml" },
+          { drug: "Zithromax (Azithromycin)", dose: r1(weight * 0.25) + " ml" },
+        );
+      }
+
+      const drugs = matchFormularyDrugs(text, FORMULARY_INDEX);
+      return new Response(JSON.stringify({ weight, paedTable, drugs }), { headers: cors });
+    }
+
     // POST /api/live-check — lightweight, non-authoritative "what's missing /
     // any red flags" scan run continuously while the clinician is still adding
     // data. Uses a fast model and its own system prompt (prompts/sa-ed-live-check.md)

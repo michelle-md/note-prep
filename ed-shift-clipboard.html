@@ -263,8 +263,6 @@
     letter-spacing: 0.08em; text-transform: uppercase;
   }
   .result-block.primary .result-block-label { color: #3B6B8A; }
-  .result-block.dosing-block .output-box { border-left: 3px solid #5C7A6B; }
-  .result-block-label.dosing-label { color: #5C7A6B; }
 
   /* Delete a single patient card */
   .card-delete-btn {
@@ -293,6 +291,8 @@
   .checks-title { font-size: 12px; font-weight: 600; color: #2C2825; margin-bottom: 6px; }
   .checks-title.flags-title { color: #8A4A4A; }
   .checks-title.missing-title { color: #9A6B2E; }
+  .checks-box.dosing-box { border-left-color: #5C7A6B; }
+  .checks-title.dosing-title { color: #5C7A6B; }
   .checks-meta { font-size: 11px; color: #7A736C; font-family: monospace; }
   .checks-body {
     font-size: 13px; font-family: monospace; color: #2C2825;
@@ -563,6 +563,7 @@ function rehydratePatient(p) {
     syncStatus: 'saved',
     lastSyncAt: new Date(),
     liveCheck: p.liveCheck ? { ...p.liveCheck, at: p.liveCheck.at ? new Date(p.liveCheck.at) : null } : null,
+    liveDosing: p.liveDosing ? { ...p.liveDosing, at: p.liveDosing.at ? new Date(p.liveDosing.at) : null } : null,
     consult: Array.isArray(p.consult) ? p.consult.map(c => ({ ...c, at: c.at ? new Date(c.at) : null })) : [],
     entries: (p.entries || []).map(e => ({
       ...e,
@@ -615,6 +616,7 @@ async function deletePatient(patientId) {
   // Optimistic local removal, then persist.
   clearTimeout(patientSyncTimers[patientId]);
   clearTimeout(liveCheckTimers[patientId]);
+  clearTimeout(liveDosingTimers[patientId]);
   state.patients = state.patients.filter(x => x.id !== patientId);
   if (state.activePatientId === patientId) {
     state.activePatientId = null;
@@ -716,6 +718,7 @@ function deleteEntry(patientId, entryId) {
   render();
   scheduleSync(patientId);
   scheduleLiveCheck(patientId);
+  scheduleLiveDosing(patientId);
 }
 
 function addTextEntry(patientId, text, extra) {
@@ -726,6 +729,7 @@ function addTextEntry(patientId, text, extra) {
   setState({ pendingText: '' });
   scheduleSync(patientId);
   scheduleLiveCheck(patientId);
+  scheduleLiveDosing(patientId);
 }
 
 // Transcript Correction Layer — sends the raw text through /api/tcl
@@ -770,6 +774,7 @@ function revertCorrections(patientId, entryId) {
   render();
   scheduleSync(patientId);
   scheduleLiveCheck(patientId);
+  scheduleLiveDosing(patientId);
 }
 
 function addImageEntry(patientId, dataUrl, filename) {
@@ -927,6 +932,142 @@ function updateChecksBox(patientId) {
   const c = document.getElementById('checksContainer');
   const patient = state.patients.find(p => p.id === patientId);
   if (c && patient) c.innerHTML = renderChecksBox(patient);
+}
+
+// --- Live dosing --------------------------------------------------------
+// Deterministic dosing scan that re-runs as data is entered, so the dosing
+// box populates while the patient is still being worked up — not only after
+// a note is generated. Server side is pure lookup and arithmetic (weight
+// formulas + verified SA formulary match): no AI, no cost, nothing invented.
+// Note: it scans typed/pasted text only — a drug that appears only in a
+// photographed document is picked up at note generation.
+
+const liveDosingTimers = {};
+function scheduleLiveDosing(patientId) {
+  clearTimeout(liveDosingTimers[patientId]);
+  liveDosingTimers[patientId] = setTimeout(() => runLiveDosing(patientId), 800);
+}
+
+async function runLiveDosing(patientId) {
+  const patient = state.patients.find(p => p.id === patientId);
+  if (!patient) return;
+
+  const text = patient.entries.filter(e => e.type === 'text').map(e => e.content).join('\n');
+  if (!text.trim()) {
+    patient.liveDosing = null;
+    if (state.activePatientId === patientId) updateDosingBox(patientId);
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/dosing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || 'Dosing scan failed');
+    patient.liveDosing = { weight: data.weight, paedTable: data.paedTable || [], drugs: data.drugs || [], at: new Date() };
+    if (state.activePatientId === patientId) updateDosingBox(patientId);
+    scheduleSync(patientId);
+  } catch(e) {
+    // Keep whatever was shown before — the generated note remains the
+    // authoritative dosing source if this scan is unavailable.
+  }
+}
+
+// Format the deterministic scan for display. Paediatric doses are listed
+// first when the documented weight is under 40 kg.
+function formatLiveDosing(ld) {
+  const lines = [];
+  if (ld.paedTable && ld.paedTable.length > 0) {
+    lines.push('Paediatric weight-based dosing (' + ld.weight + ' kg):');
+    ld.paedTable.forEach(r => lines.push(r.drug + ': ' + r.dose));
+  }
+  const isPaed = ld.weight !== null && ld.weight < 40;
+  (ld.drugs || []).forEach(m => {
+    // Live view is a quick reference: paed-first for a child, deduped on the
+    // dose itself (the same dose recurs across many STG indications), and
+    // without the indication labels — the generated DOSING section is where
+    // the indication-aware curation happens.
+    const sorted = (m.doses || []).slice().sort((a, b) => {
+      const ap = a.paed_dose_per_kg ? 0 : 1;
+      const bp = b.paed_dose_per_kg ? 0 : 1;
+      return isPaed ? ap - bp : bp - ap;
+    });
+    const seen = new Set();
+    const doses = [];
+    for (const d of sorted) {
+      const k = [d.paed_dose_per_kg || d.adult_dose, d.route, d.frequency].join('|');
+      if (seen.has(k)) continue;
+      seen.add(k);
+      doses.push(d);
+      if (doses.length >= 3) break;
+    }
+    if (doses.length === 0) return;
+    if (lines.length > 0) lines.push('');
+    lines.push(m.generic + ' (verified SA formulary):');
+    doses.forEach(d => {
+      const bits = [];
+      if (d.paed_dose_per_kg) bits.push('paed ' + d.paed_dose_per_kg);
+      if (d.adult_dose) bits.push('adult ' + d.adult_dose);
+      if (d.route) bits.push(d.route);
+      if (d.frequency) bits.push(d.frequency);
+      if (d.max_dose) bits.push('max ' + d.max_dose);
+      lines.push(bits.join(', '));
+    });
+  });
+  return lines.join('\n').trim();
+}
+
+// The dosing box shows whichever is newer: the curated DOSING section from a
+// generated note, or the latest deterministic live scan — same newer-wins
+// rule as the checks box.
+function currentDosingText(patient) {
+  const gen = patient.generatedOutput ? parseSections(patient.generatedOutput).dosing : '';
+  const genAt = patient.generatedAt ? (patient.generatedAt instanceof Date ? patient.generatedAt : new Date(patient.generatedAt)) : null;
+  const ld = patient.liveDosing || null;
+  const ldAt = ld && ld.at ? (ld.at instanceof Date ? ld.at : new Date(ld.at)) : null;
+  if (gen && genAt && (!ldAt || genAt >= ldAt)) {
+    return { text: gen.trim(), meta: 'from note ' + formatTime(genAt) };
+  }
+  if (ld) {
+    const t = formatLiveDosing(ld);
+    if (t) return { text: t, meta: 'live ' + (ldAt ? formatTime(ldAt) : '') };
+  }
+  if (gen && genAt) return { text: gen.trim(), meta: 'from note ' + formatTime(genAt) };
+  return { text: '', meta: '' };
+}
+
+function copyDosing(patientId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  const cur = currentDosingText(p);
+  if (cur.text) copyText(cur.text);
+}
+
+function renderDosingBox(patient) {
+  const cur = currentDosingText(patient);
+  const empty = !cur.text || cur.text.toLowerCase() === 'no dosing to calculate.';
+  const body = empty
+    ? '<div class="checks-empty">Mention a weight or a medication and verified doses appear here.</div>'
+    : `<div class="checks-body">${esc(cur.text)}</div>`;
+  const copyBtn = empty ? '' : `<button class="checks-refresh" onclick="copyDosing('${patient.id}')">Copy</button>`;
+  return `
+    <div class="checks-group-header">
+      <span class="checks-meta">${esc(cur.meta)}</span>
+      ${copyBtn}
+    </div>
+    <div class="checks-box dosing-box">
+      <div class="checks-title dosing-title">Dosing</div>
+      ${body}
+    </div>`;
+}
+
+function updateDosingBox(patientId) {
+  const c = document.getElementById('dosingContainer');
+  const patient = state.patients.find(p => p.id === patientId);
+  if (c && patient) c.innerHTML = renderDosingBox(patient);
 }
 
 // --- Ask the Consult -----------------------------------------------------
@@ -1314,14 +1455,6 @@ function renderPatientView() {
           </div>
           <div class="output-box">${esc(s.note || '')}</div>
         </div>
-        ${s.dosing && s.dosing.trim() && s.dosing.trim().toLowerCase() !== 'no dosing to calculate.' ? `
-        <div class="result-block dosing-block">
-          <div class="result-block-header">
-            <span class="result-block-label dosing-label">Dosing</span>
-            <button class="copy-btn" onclick="copySection('${patient.id}','dosing')">Copy</button>
-          </div>
-          <div class="output-box">${esc(s.dosing)}</div>
-        </div>` : ''}
         <div class="output-action-row">
           <button class="btn-iterate" onclick="setState({showIterate:!state.showIterate, iterateText:''})">
             ${state.showIterate ? 'Cancel' : 'Iterate note'}
@@ -1381,6 +1514,7 @@ function renderPatientView() {
     </div>` : '';
 
   const checksBox = `<div id="checksContainer">${renderChecksBox(patient)}</div>`;
+  const dosingBox = `<div id="dosingContainer">${renderDosingBox(patient)}</div>`;
 
   return `
     <div class="patient-grid">
@@ -1393,6 +1527,7 @@ function renderPatientView() {
       </div>
       <aside class="side-col">
         ${checksBox}
+        ${dosingBox}
         ${codingSection}
       </aside>
     </div>
@@ -1446,7 +1581,10 @@ function openPatient(id) {
   setState({ activePatientId: id, view: 'patient', pendingText: '', generateError: null, showConsult: false, consultQuestion: '', consultError: null, showInput });
   // Refresh the live checks for a card that already has data (deduped — skips
   // the API call if nothing has changed since the last check).
-  if (p && p.entries.length > 0) scheduleLiveCheck(id);
+  if (p && p.entries.length > 0) {
+    scheduleLiveCheck(id);
+    scheduleLiveDosing(id);
+  }
 }
 
 async function addNoteFromInput() {
