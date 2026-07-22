@@ -937,9 +937,11 @@ function updateChecksBox(patientId) {
 // --- Live dosing --------------------------------------------------------
 // Deterministic dosing scan that re-runs as data is entered, so the dosing
 // box populates while the patient is still being worked up — not only after
-// a note is generated. Server side is pure lookup and arithmetic (weight
-// formulas + verified SA formulary match): no AI, no cost, nothing invented.
-// Note: it scans typed/pasted text only — a drug that appears only in a
+// a note is generated. By explicit clinician decision (2026-07-22) this shows
+// ONLY the clinician's paediatric weight-based table for a documented weight
+// under 40 kg — no doses for any other medication, ever. Server side is pure
+// arithmetic: no AI, no cost, nothing invented.
+// Note: it scans typed/pasted text only — a weight that appears only in a
 // photographed document is picked up at note generation.
 
 const liveDosingTimers = {};
@@ -967,7 +969,7 @@ async function runLiveDosing(patientId) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message || 'Dosing scan failed');
-    patient.liveDosing = { weight: data.weight, paedTable: data.paedTable || [], drugs: data.drugs || [], unverified: data.unverified || [], at: new Date() };
+    patient.liveDosing = { weight: data.weight, paedTable: data.paedTable || [], at: new Date() };
     if (state.activePatientId === patientId) updateDosingBox(patientId);
     scheduleSync(patientId);
   } catch(e) {
@@ -976,57 +978,13 @@ async function runLiveDosing(patientId) {
   }
 }
 
-// Format the deterministic scan for display. Paediatric doses are listed
-// first when the documented weight is under 40 kg.
+// Format the deterministic scan for display: the paediatric weight-based
+// table only (empty string for an adult / no documented weight).
 function formatLiveDosing(ld) {
-  const lines = [];
-  if (ld.paedTable && ld.paedTable.length > 0) {
-    lines.push('Paediatric weight-based dosing (' + ld.weight + ' kg):');
-    ld.paedTable.forEach(r => lines.push(r.drug + ': ' + r.dose));
-  }
-  const isPaed = ld.weight !== null && ld.weight < 40;
-  (ld.drugs || []).forEach(m => {
-    // Live view is a quick reference: paed-first for a child, deduped on the
-    // dose itself (the same dose recurs across many STG indications), and
-    // without the indication labels — the generated DOSING section is where
-    // the indication-aware curation happens.
-    const sorted = (m.doses || []).slice().sort((a, b) => {
-      const ap = a.paed_dose_per_kg ? 0 : 1;
-      const bp = b.paed_dose_per_kg ? 0 : 1;
-      return isPaed ? ap - bp : bp - ap;
-    });
-    const seen = new Set();
-    const doses = [];
-    for (const d of sorted) {
-      const k = [d.paed_dose_per_kg || d.adult_dose, d.route, d.frequency].join('|');
-      if (seen.has(k)) continue;
-      seen.add(k);
-      doses.push(d);
-      if (doses.length >= 3) break;
-    }
-    if (doses.length === 0) return;
-    if (lines.length > 0) lines.push('');
-    lines.push(m.generic + ' (verified SA formulary):');
-    doses.forEach(d => {
-      const bits = [];
-      if (d.paed_dose_per_kg) bits.push('paed ' + d.paed_dose_per_kg);
-      if (d.adult_dose) bits.push('adult ' + d.adult_dose);
-      if (d.route) bits.push(d.route);
-      if (d.frequency) bits.push(d.frequency);
-      if (d.max_dose) bits.push('max ' + d.max_dose);
-      lines.push(bits.join(', '));
-    });
-  });
-  // Recognised medications with no verified SA formulary dose are still
-  // listed — with an explicit verify-manually line, never a guessed dose.
-  (ld.unverified || []).forEach(u => {
-    if (lines.length > 0) lines.push('');
-    const name = u.mention.toLowerCase() === u.generic.toLowerCase()
-      ? u.generic
-      : u.mention + ' (' + u.generic.toLowerCase() + ')';
-    lines.push(name + ': no verified SA formulary dose — use documented dose / verify manually');
-  });
-  return lines.join('\n').trim();
+  if (!ld.paedTable || ld.paedTable.length === 0) return '';
+  const lines = ['Paediatric weight-based dosing (' + ld.weight + ' kg):'];
+  ld.paedTable.forEach(r => lines.push(r.drug + ': ' + r.dose));
+  return lines.join('\n');
 }
 
 // The dosing box shows whichever is newer: the curated DOSING section from a
@@ -1059,7 +1017,7 @@ function renderDosingBox(patient) {
   const cur = currentDosingText(patient);
   const empty = !cur.text || cur.text.toLowerCase() === 'no dosing to calculate.';
   const body = empty
-    ? '<div class="checks-empty">Mention a weight or a medication and verified doses appear here.</div>'
+    ? '<div class="checks-empty">For a child under 40 kg with a documented weight, the weight-based dosing table appears here.</div>'
     : `<div class="checks-body">${esc(cur.text)}</div>`;
   const copyBtn = empty ? '' : `<button class="checks-refresh" onclick="copyDosing('${patient.id}')">Copy</button>`;
   return `

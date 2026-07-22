@@ -22,7 +22,13 @@ export function soundex(word) {
     M: "5", N: "5",
     R: "6",
   };
-  let result = s[0];
+  // Depart from classic Soundex: the first letter is CODED, not kept literal.
+  // Voice transcription regularly swaps sound-alike initials (Zefo for Xefo,
+  // Cetamol for Ketamol), and classic Soundex can never match those because it
+  // compares the raw first letter. Coding it puts X/Z/C/K/S-initial variants
+  // in the same class; the Levenshtein <= 2 gate still applies afterwards, and
+  // candidates are only hints for Stage B with a clinician-visible revert.
+  let result = codes[s[0]] || s[0];
   let prevCode = codes[s[0]] || "";
   for (let i = 1; i < s.length && result.length < 4; i++) {
     const c = s[i];

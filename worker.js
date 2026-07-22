@@ -26,8 +26,6 @@ import promptLiveCheck from "./prompts/sa-ed-live-check.md";
 import promptConsult from "./prompts/sa-ed-consult.md";
 import tclVocab from "./tcl-vocab.json";
 import { buildActiveTerms, buildTermIndex, stageACandidates } from "./tcl-stage-a.js";
-import formulary from "./ed-formulary.json";
-import { buildFormularyIndex, matchFormularyDrugs, matchMentionedDrugs, formatFormularyForPrompt } from "./formulary.js";
 
 // System prompt is assembled at request time from the bundled prompt files
 // above. To change note formatting, wording, or clinical rules, edit the
@@ -68,7 +66,7 @@ const SYSTEM_PROMPT = [
     "The SOAP note body exactly as specified in the rules above. This is the text that is pasted into the CareOn journal. Do NOT put any ICD-10 codes, billing codes, or the dosing table in this section.",
     "",
     "@@DOSING@@",
-    "The dosing section exactly as specified in the sa-ed-dosing rules: the paediatric weight-based table for any patient under 40 kg, and the formulary/documented doses for medications given or prescribed. Follow the absolute safety rule — only clinician-documented doses or doses from the VERIFIED SA FORMULARY DOSES block; never a dose from your own knowledge. If nothing applies, write exactly: No dosing to calculate.",
+    "The dosing section exactly as specified in the sa-ed-dosing rules: ONLY the paediatric weight-based table for a documented weight under 40 kg (or its weight-not-documented flag). No other medication dose or suggestion ever appears here. For an adult or a weight of 40 kg and over, write exactly: No dosing to calculate.",
     "",
     "@@CAREON_CODE@@",
     "The ICD-10 coding for the CareOn ED Notes tab. First line: CareOn ED Notes tab primary code: [Code]. Then each relevant code and its description on its own line. Confirmed diagnoses only.",
@@ -90,27 +88,6 @@ const PATIENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
 // index once at module scope, not per request.
 const TCL_ACTIVE_TERMS = buildActiveTerms(tclVocab);
 const TCL_TERM_INDEX = buildTermIndex(TCL_ACTIVE_TERMS);
-
-// Verified-only SA EML dose index — built once. Used to scope the formulary
-// down to the drugs mentioned in a note so the model receives real doses to
-// draw the DOSING section from, never inventing one from its own knowledge.
-const FORMULARY_INDEX = buildFormularyIndex(formulary);
-
-// Pull all plain-text out of an Anthropic messages array (ignores images) so we
-// can scan it for drug names.
-function extractMessageText(messages) {
-  if (!Array.isArray(messages)) return "";
-  const parts = [];
-  for (const m of messages) {
-    if (typeof m.content === "string") { parts.push(m.content); continue; }
-    if (Array.isArray(m.content)) {
-      for (const c of m.content) {
-        if (c && c.type === "text" && typeof c.text === "string") parts.push(c.text);
-      }
-    }
-  }
-  return parts.join("\n");
-}
 
 export default {
   async fetch(request, env) {
@@ -152,24 +129,6 @@ export default {
       if (Array.isArray(body.messages) && body.messages.length > 0) {
         const last = body.messages[body.messages.length - 1];
         if (last.role === "user" && Array.isArray(last.content)) {
-          // Scope the verified formulary to the drugs actually mentioned and
-          // hand the model those real doses to build the DOSING section from.
-          // This is the mechanism that lets the "never invent a dose" rule hold:
-          // the model is given the only doses it is permitted to state.
-          const mentioned = matchMentionedDrugs(extractMessageText(body.messages), FORMULARY_INDEX);
-          const doseBlock = formatFormularyForPrompt(mentioned.verified);
-          if (doseBlock) {
-            last.content.push({ type: "text", text:
-              "VERIFIED SA FORMULARY DOSES (clinician-verified; the ONLY doses you may state in the DOSING section besides doses the clinician documented — do not use any dose from your own knowledge):\n" + doseBlock });
-          }
-          if (mentioned.unverified.length > 0) {
-            const lines = mentioned.unverified.map(u =>
-              u.mention.toLowerCase() === u.generic.toLowerCase()
-                ? u.generic
-                : u.mention + " = " + u.generic).join("\n");
-            last.content.push({ type: "text", text:
-              "MEDICATIONS MENTIONED WITH NO VERIFIED SA FORMULARY DOSE (list each in the DOSING section — use the clinician's documented dose if one was given, otherwise flag it for manual verification; never supply a dose yourself):\n" + lines });
-          }
           last.content.push({ type: "text", text: promptFinalReminders });
         }
       }
@@ -266,11 +225,12 @@ export default {
     }
 
     // POST /api/dosing — live dosing scan. Fully deterministic: extracts a
-    // documented weight, computes the paediatric weight-based table for a child
-    // under 40 kg, and matches mentioned drugs against the verified SA EML
-    // formulary. No LLM involved, so it is instant, free, and can never invent
-    // a dose — it only ever returns the clinician's own formulas and verified
-    // formulary entries. The client re-runs this as data is entered.
+    // documented weight and computes the clinician's paediatric weight-based
+    // table for a child under 40 kg. Nothing else — by explicit clinician
+    // decision (2026-07-22) no dose is returned for any other medication, for
+    // adults, or from any formulary source. No LLM involved: instant, free,
+    // and only the clinician's own formulas. Re-run by the client as data is
+    // entered.
     if (request.method === "POST" && url.pathname === "/api/dosing") {
       let body;
       try { body = await request.json(); } catch(e) {
@@ -278,7 +238,7 @@ export default {
       }
       const text = typeof body.text === "string" ? body.text : "";
       if (!text.trim()) {
-        return new Response(JSON.stringify({ weight: null, paedTable: [], drugs: [], unverified: [] }), { headers: cors });
+        return new Response(JSON.stringify({ weight: null, paedTable: [] }), { headers: cors });
       }
 
       // First "<number> kg" in the notes is taken as the documented weight.
@@ -300,15 +260,7 @@ export default {
         );
       }
 
-      // Every recognised medication is returned: `drugs` carry verified SA
-      // doses; `unverified` are recognised mentions (brand or generic) with no
-      // verified dose — the client lists them with a verify-manually line.
-      const mentioned = matchMentionedDrugs(text, FORMULARY_INDEX);
-      return new Response(JSON.stringify({
-        weight, paedTable,
-        drugs: mentioned.verified,
-        unverified: mentioned.unverified,
-      }), { headers: cors });
+      return new Response(JSON.stringify({ weight, paedTable }), { headers: cors });
     }
 
     // POST /api/live-check — lightweight, non-authoritative "what's missing /
