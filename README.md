@@ -5,7 +5,10 @@ Two tools served by one Cloudflare Worker:
 - **Note Prep** (`index.html`) — CareOn note formatting tool
 - **ED Shift Clipboard** (`ed-shift-clipboard.html`) — shift patient cards, multi-modal entry, AI note generation
 
-Live at `https://clipboard.theconsultr.com` (clipboard) and the `note-prep.marxmichelle360.workers.dev` fallback.
+Live at `https://clipboard.theconsultr.com` (clipboard), behind Cloudflare Access.
+The `workers.dev` route is deliberately disabled (`workers_dev: false` in
+`wrangler.jsonc`): it served the same worker and shift data with no Access
+sign-in in front of it. Do not re-enable it without putting Access in front.
 
 ## Cloud vs local AI
 
