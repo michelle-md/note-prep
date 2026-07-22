@@ -60,17 +60,62 @@ Rules:
 
 Order: ECG first, then Radiology, then Blood results, then Urine tests.
 
+Overarching rule — SUMMARISE, DO NOT TRANSCRIBE. When results are supplied
+(typed, or as a photograph of a report or screen), never copy the whole report
+into the note. Report only the clinically important positive and negative
+findings, and give an interpretation. Copying every line of a report verbatim is
+wrong. Interpreting is always preferred over reproducing.
+
 ECG format:
 ECG: [rate], [rhythm], [axis], [intervals], [ST changes], [interpretation]
 
 Radiology format:
-[Modality] ([source], [timestamp] if available): [key findings]. [Impression].
+[Modality] ([source], [timestamp] if available): [only the important positive
+and negative findings]. [Impression in one line].
+Do not reproduce the full radiology report. Pull out the findings that matter
+for this presentation (positive findings, and the pertinent negatives that were
+actively looked for) and the impression — nothing else.
 
-Blood results format:
-Bloods ([source] if available): [parameter value unit reference flag] | [parameter value unit reference flag]
+Blood results — interpret, do not list every value:
+Bloods ([source] if available): [only the relevant abnormal values with their
+[H]/[L] or [CRITICAL] flags, plus the pertinent normals that matter for this
+presentation], followed by a short interpretation in emergency-medicine language.
+Prefer an interpretive summary over a value dump. Examples of interpretation:
+cholestatic liver derangement, pre-renal dysfunction, iron-deficiency picture,
+acute kidney injury on baseline, raised inflammatory markers. Do not paste the
+entire panel — a normal parameter that has no bearing on this presentation is
+omitted. Always still surface any critical or clearly abnormal value; never hide
+an abnormal result in the name of brevity.
 
-Critical values: flag immediately as [CRITICAL: value as reported]
+Collapse the normals. A group of parameters that are all within range and not
+central to the presentation is summarised in a few words, not itemised value by
+value. For example, in a febrile child with a raised WCC and CRP, write
+"WCC 14.8 [H] | CRP 62 [H]; renal function, electrolytes, liver enzymes and full
+blood count otherwise unremarkable" rather than listing Na, K, urea, creatinine,
+Hb, platelets, ALT and bilirubin each with its value. Name individual normal
+values only when that specific normal is clinically pertinent (for example a
+normal troponin in chest pain, a normal lactate in query sepsis).
+
+Do not do both for the same values: either a parameter is worth naming with its
+value, or it is folded into the "otherwise unremarkable" summary phrase — never
+list a string of values and then also call them unremarkable. In the chest-pain
+example the correct line is "Troponin 8 ng/L (normal); FBC, renal function,
+electrolytes and inflammatory markers unremarkable" — the individual normal
+values are not itemised.
+
+Venous or arterial blood gas — interpret, do not dump the panel:
+VBG/ABG: [only the important values — typically glucose, lactate, pH, the
+relevant electrolytes such as K and Na, and base excess/bicarbonate where they
+matter], followed by an acid-base interpretation in words (for example:
+compensated respiratory acidosis, high anion gap metabolic acidosis, normal
+acid-base status). Do not reproduce every gas parameter. For a full stepwise
+interpretation apply the sa-ed-blood-gas rules.
+
+Critical values: flag immediately as [CRITICAL: value as reported].
 Use units and reference ranges exactly as they appear on the source report.
+Never fabricate, infer, or estimate a value that is not present in the supplied
+result — summarising means selecting and interpreting what is there, never
+inventing what is not.
 
 ## TREATMENT IN THE ED
 

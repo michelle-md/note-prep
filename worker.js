@@ -5,6 +5,7 @@ import promptTrauma from "./prompts/sa-ed-trauma.md";
 import promptPaediatric from "./prompts/sa-ed-paediatric.md";
 import promptObsGynae from "./prompts/sa-ed-obs-gynae.md";
 import promptSurgery from "./prompts/sa-ed-surgery.md";
+import promptDosing from "./prompts/sa-ed-dosing.md";
 import promptDecisionTools from "./prompts/sa-ed-decision-tools.md";
 import promptBilling from "./prompts/sa-ed-billing.md";
 import promptIcd10 from "./prompts/sa-ed-icd10.md";
@@ -38,6 +39,7 @@ const SYSTEM_PROMPT = [
   promptPaediatric,
   promptObsGynae,
   promptSurgery,
+  promptDosing,
   promptDecisionTools,
   promptBilling,
   promptIcd10,
@@ -58,10 +60,13 @@ const SYSTEM_PROMPT = [
   // the client can split on it reliably.
   [
     "FINAL OUTPUT STRUCTURE:",
-    "Output the following five sections in this exact order. Each section marker below must appear alone on its own line, spelled exactly as shown, with nothing else on that line. Do not write any text before the first marker, and do not repeat a marker.",
+    "Output the following six sections in this exact order. Each section marker below must appear alone on its own line, spelled exactly as shown, with nothing else on that line. Do not write any text before the first marker, and do not repeat a marker.",
     "",
     "@@NOTE@@",
-    "The SOAP note body exactly as specified in the rules above. This is the text that is pasted into the CareOn journal. Do NOT put any ICD-10 codes or billing codes in this section.",
+    "The SOAP note body exactly as specified in the rules above. This is the text that is pasted into the CareOn journal. Do NOT put any ICD-10 codes, billing codes, or the dosing table in this section.",
+    "",
+    "@@DOSING@@",
+    "The dosing section exactly as specified in the sa-ed-dosing rules: ONLY the paediatric weight-based table for a documented weight under 40 kg (or its weight-not-documented flag). No other medication dose or suggestion ever appears here. For an adult or a weight of 40 kg and over, write exactly: No dosing to calculate.",
     "",
     "@@CAREON_CODE@@",
     "The ICD-10 coding for the CareOn ED Notes tab. First line: CareOn ED Notes tab primary code: [Code]. Then each relevant code and its description on its own line. Confirmed diagnoses only.",
@@ -83,6 +88,88 @@ const PATIENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
 // index once at module scope, not per request.
 const TCL_ACTIVE_TERMS = buildActiveTerms(tclVocab);
 const TCL_TERM_INDEX = buildTermIndex(TCL_ACTIVE_TERMS);
+
+// ---- LLM provider switch ----
+// env.LLM_PROVIDER chooses where every LLM call goes:
+//   unset / "anthropic" — Anthropic API. This is the deployed cloud worker's
+//                         behaviour (no var is set in production), unchanged.
+//   "ollama"            — local Ollama at OLLAMA_URL (default
+//                         http://127.0.0.1:11434), model OLLAMA_MODEL
+//                         (default "mistral"). POPIA-safe: nothing leaves the
+//                         machine. Set via .dev.vars for `npx wrangler dev`
+//                         only — .dev.vars is git-ignored and asset-ignored,
+//                         so it can never deploy or be served publicly.
+
+// The local model (Mistral 7B) has no vision. Image blocks are replaced with
+// an explicit placeholder so the model reports them as unread data instead of
+// silently ignoring them or guessing their contents (no-fabrication rule).
+const LOCAL_IMAGE_PLACEHOLDER =
+  "[IMAGE ATTACHED — NOT READABLE IN LOCAL MODE. The local model cannot see images. " +
+  "Do not describe, infer, or use this image's contents in any way. " +
+  "List it under missing data as an unprocessed image the clinician must transcribe manually.]";
+
+function contentToPlainText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map(block => {
+      if (block && block.type === "text") return block.text;
+      if (block && block.type === "image") return LOCAL_IMAGE_PLACEHOLDER;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+// Single entry point for every LLM call in this worker. Returns an
+// Anthropic-shaped response ({ content: [{type:"text",text}], ... } or
+// { error: { message } }) regardless of provider, so callers and the
+// clipboard client handle both providers identically.
+async function callLLM(env, { model, max_tokens, temperature, system, messages }) {
+  const provider = (env.LLM_PROVIDER || "anthropic").toLowerCase();
+
+  if (provider === "ollama") {
+    const ollamaMessages = [
+      { role: "system", content: system },
+      ...messages.map(m => ({ role: m.role, content: contentToPlainText(m.content) })),
+    ];
+    const response = await fetch((env.OLLAMA_URL || "http://127.0.0.1:11434") + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: env.OLLAMA_MODEL || "mistral",
+        stream: false,
+        messages: ollamaMessages,
+        // num_ctx must be raised explicitly — Ollama's default (4k) is far
+        // smaller than the assembled system prompt. Mistral 7B tops out at 32k.
+        options: { temperature, num_predict: max_tokens, num_ctx: 32768 },
+      }),
+    });
+    let data;
+    try { data = await response.json(); } catch (e) {
+      return { error: { message: "Ollama returned a non-JSON response (" + response.status + ")" } };
+    }
+    if (!response.ok || data.error) {
+      return { error: { message: "Ollama: " + (data.error || response.statusText) } };
+    }
+    return {
+      content: [{ type: "text", text: (data.message && data.message.content) || "" }],
+      model: data.model,
+      stop_reason: data.done_reason || "end_turn",
+    };
+  }
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({ model, max_tokens, temperature, system, messages }),
+  });
+  return await response.json();
+}
 
 export default {
   async fetch(request, env) {
@@ -128,16 +215,13 @@ export default {
         }
       }
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify(body),
+        const data = await callLLM(env, {
+          model: body.model,
+          max_tokens: body.max_tokens || 8000,
+          temperature: body.temperature,
+          system: body.system,
+          messages: body.messages,
         });
-        const data = await response.json();
         return new Response(JSON.stringify(data), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ error: { message: "API request failed: " + e.message } }), { status: 502, headers: cors });
@@ -172,30 +256,21 @@ export default {
       ];
 
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-5",
-            max_tokens: 2000,
-            // Correction task, not generation — keep it deterministic
-            temperature: 0.1,
-            system: promptTclCorrection,
-            messages: [{
-              role: "user",
-              content: JSON.stringify({
-                raw_transcript: rawTranscript,
-                active_vocabulary: scopedVocabulary,
-                phonetic_candidates: candidates,
-              }),
-            }],
-          }),
+        const data = await callLLM(env, {
+          model: "claude-sonnet-4-5",
+          max_tokens: 2000,
+          // Correction task, not generation — keep it deterministic
+          temperature: 0.1,
+          system: promptTclCorrection,
+          messages: [{
+            role: "user",
+            content: JSON.stringify({
+              raw_transcript: rawTranscript,
+              active_vocabulary: scopedVocabulary,
+              phonetic_candidates: candidates,
+            }),
+          }],
         });
-        const data = await response.json();
         if (data.error) {
           return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
         }
@@ -219,6 +294,45 @@ export default {
       }
     }
 
+    // POST /api/dosing — live dosing scan. Fully deterministic: extracts a
+    // documented weight and computes the clinician's paediatric weight-based
+    // table for a child under 40 kg. Nothing else — by explicit clinician
+    // decision (2026-07-22) no dose is returned for any other medication, for
+    // adults, or from any formulary source. No LLM involved: instant, free,
+    // and only the clinician's own formulas. Re-run by the client as data is
+    // entered.
+    if (request.method === "POST" && url.pathname === "/api/dosing") {
+      let body;
+      try { body = await request.json(); } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Invalid request body" } }), { status: 400, headers: cors });
+      }
+      const text = typeof body.text === "string" ? body.text : "";
+      if (!text.trim()) {
+        return new Response(JSON.stringify({ weight: null, paedTable: [] }), { headers: cors });
+      }
+
+      // First "<number> kg" in the notes is taken as the documented weight.
+      const wm = text.match(/(\d{1,3}(?:[.,]\d{1,2})?)\s*kg\b/i);
+      let weight = wm ? parseFloat(wm[1].replace(",", ".")) : null;
+      if (weight !== null && (!isFinite(weight) || weight <= 0 || weight > 300)) weight = null;
+
+      // Clinician-defined volume formulas (Clinical Specification 9.3) — only
+      // for a documented weight under 40 kg.
+      const paedTable = [];
+      if (weight !== null && weight < 40) {
+        const r1 = v => (Math.round(v * 10) / 10).toFixed(1);
+        paedTable.push(
+          { drug: "Paracetamol (Calpol)", dose: r1(weight * 0.625) + " ml" },
+          { drug: "Nurofen (Ibuprofen)", dose: r1(weight * 0.5) + " ml" },
+          { drug: "Aspelone (Prednisolone)", dose: r1(weight / 6) + " ml" },
+          { drug: "Augmentin (Amoxicillin-clavulanate)", dose: r1(weight * 0.375) + " ml" },
+          { drug: "Zithromax (Azithromycin)", dose: r1(weight * 0.25) + " ml" },
+        );
+      }
+
+      return new Response(JSON.stringify({ weight, paedTable }), { headers: cors });
+    }
+
     // POST /api/live-check — lightweight, non-authoritative "what's missing /
     // any red flags" scan run continuously while the clinician is still adding
     // data. Uses a fast model and its own system prompt (prompts/sa-ed-live-check.md)
@@ -234,23 +348,14 @@ export default {
         return new Response(JSON.stringify({ text: "" }), { headers: cors });
       }
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            // Fast/cheap model — this runs repeatedly as data is entered.
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 700,
-            temperature: 0.2,
-            system: promptLiveCheck,
-            messages: [{ role: "user", content }],
-          }),
+        const data = await callLLM(env, {
+          // Fast/cheap model — this runs repeatedly as data is entered.
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 700,
+          temperature: 0.2,
+          system: promptLiveCheck,
+          messages: [{ role: "user", content }],
         });
-        const data = await response.json();
         if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
         const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
         return new Response(JSON.stringify({ text }), { headers: cors });
@@ -274,22 +379,13 @@ export default {
         return new Response(JSON.stringify({ error: { message: "No question provided" } }), { status: 400, headers: cors });
       }
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-5",
-            max_tokens: 2000,
-            temperature: 0.3,
-            system: promptConsult,
-            messages,
-          }),
+        const data = await callLLM(env, {
+          model: "claude-sonnet-4-5",
+          max_tokens: 2000,
+          temperature: 0.3,
+          system: promptConsult,
+          messages,
         });
-        const data = await response.json();
         if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
         const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
         return new Response(JSON.stringify({ text }), { headers: cors });
@@ -370,6 +466,34 @@ export default {
       try {
         const body = await request.text();
         await env.SHIFT_STORE.put("patient_" + patientId, body, { expirationTtl: 86400 });
+        return new Response(JSON.stringify({ ok: true }), { headers: cors });
+      } catch(e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: cors });
+      }
+    }
+
+    // DELETE /api/patient/:id — delete a single patient card (created in error,
+    // or otherwise no longer wanted). Removes the patient record and drops the
+    // id from the shift index. Does not touch any other patient.
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/patient/")) {
+      const patientId = url.pathname.replace("/api/patient/", "");
+      if (!patientId || !PATIENT_ID_RE.test(patientId)) {
+        return new Response(JSON.stringify({ ok: false, error: "Invalid patient id" }), { status: 400, headers: cors });
+      }
+      try {
+        await env.SHIFT_STORE.delete("patient_" + patientId);
+        // Drop the id from the shift index if present
+        const indexRaw = await env.SHIFT_STORE.get("shift_index");
+        if (indexRaw) {
+          try {
+            const index = JSON.parse(indexRaw);
+            if (Array.isArray(index.patientIds)) {
+              index.patientIds = index.patientIds.filter(id => id !== patientId);
+              index.updatedAt = new Date().toISOString();
+              await env.SHIFT_STORE.put("shift_index", JSON.stringify(index), { expirationTtl: 86400 });
+            }
+          } catch(e) { /* index rebuilds itself on next load */ }
+        }
         return new Response(JSON.stringify({ ok: true }), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: cors });

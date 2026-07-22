@@ -39,6 +39,10 @@ normal PR interval, nil acute ischaemic changes, normal QTc
 
 Modify based on actual findings. Remove lines that do not apply.
 
-VBG: pH [x] | pCO2 [x] | HCO3 [x] | BE [x] | Lactate [x] | K [x] | Na [x]
+VBG: report only the important values (typically glucose, lactate, pH, relevant
+electrolytes such as K and Na, and base excess/bicarbonate where relevant),
+followed by an acid-base interpretation in words — for example compensated
+respiratory acidosis, high anion gap metabolic acidosis, or normal acid-base
+status. Do not reproduce every gas parameter and do not paste the whole panel.
 
 For full blood gas interpretation refer to sa-ed-blood-gas skill.

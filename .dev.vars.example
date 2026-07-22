@@ -1,0 +1,11 @@
+# Copy to .dev.vars to configure `npx wrangler dev` (local development).
+#
+# LOCAL MODE (POPIA-safe — all AI calls go to Ollama on this machine,
+# nothing leaves the machine; Ollama must be running with the model pulled):
+LLM_PROVIDER=ollama
+OLLAMA_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=mistral
+
+# CLOUD MODE (dev against the Anthropic API — fictional data only):
+# comment out the three lines above and set:
+# ANTHROPIC_API_KEY=sk-ant-...

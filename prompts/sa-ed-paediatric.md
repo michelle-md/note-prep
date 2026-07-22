@@ -49,22 +49,10 @@ Omit entirely if not provided.
 
 ## Weight-Based Dosing Table
 
-Only calculate and show a dose for a drug in this table if that specific drug was
-documented as administered in the ED (Treatment in the ED section) or prescribed
-as a script in the Plan section. Do not include a line for any of the five drugs
-below that was not actually given or prescribed for this patient — this table is
-not a standard reference to include regardless of what was used.
+The paediatric weight-based dosing table is NOT placed in the note body. It is
+generated in the dedicated DOSING output section (see sa-ed-dosing), which the
+clipboard shows in its own copyable box.
 
-If none of the five drugs were administered or prescribed, omit the table
-entirely.
-
-Paediatric weight-based dosing ([weight] kg):
-Paracetamol: [weight x 0.625] ml
-Nurofen (Ibuprofen): [weight x 0.5] ml
-Aspelone (Prednisolone): [weight / 6] ml
-Augmentin (Amoxicillin-clavulanate): [weight x 0.375] ml
-Zithromax (Azithromycin): [0.25 x weight] ml
-
-Round to one decimal place.
-If weight not provided and at least one of these drugs was given or prescribed,
-flag: [Weight not documented — dosing table cannot be calculated]
+For any patient under 40 kg with a documented weight, that table is always
+produced there — it is a standing reference for the child, shown whether or not
+those drugs were given. Do not duplicate the dosing table inside the note body.
