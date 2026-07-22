@@ -89,6 +89,88 @@ const PATIENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
 const TCL_ACTIVE_TERMS = buildActiveTerms(tclVocab);
 const TCL_TERM_INDEX = buildTermIndex(TCL_ACTIVE_TERMS);
 
+// ---- LLM provider switch ----
+// env.LLM_PROVIDER chooses where every LLM call goes:
+//   unset / "anthropic" — Anthropic API. This is the deployed cloud worker's
+//                         behaviour (no var is set in production), unchanged.
+//   "ollama"            — local Ollama at OLLAMA_URL (default
+//                         http://127.0.0.1:11434), model OLLAMA_MODEL
+//                         (default "mistral"). POPIA-safe: nothing leaves the
+//                         machine. Set via .dev.vars for `npx wrangler dev`
+//                         only — .dev.vars is git-ignored and asset-ignored,
+//                         so it can never deploy or be served publicly.
+
+// The local model (Mistral 7B) has no vision. Image blocks are replaced with
+// an explicit placeholder so the model reports them as unread data instead of
+// silently ignoring them or guessing their contents (no-fabrication rule).
+const LOCAL_IMAGE_PLACEHOLDER =
+  "[IMAGE ATTACHED — NOT READABLE IN LOCAL MODE. The local model cannot see images. " +
+  "Do not describe, infer, or use this image's contents in any way. " +
+  "List it under missing data as an unprocessed image the clinician must transcribe manually.]";
+
+function contentToPlainText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map(block => {
+      if (block && block.type === "text") return block.text;
+      if (block && block.type === "image") return LOCAL_IMAGE_PLACEHOLDER;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+// Single entry point for every LLM call in this worker. Returns an
+// Anthropic-shaped response ({ content: [{type:"text",text}], ... } or
+// { error: { message } }) regardless of provider, so callers and the
+// clipboard client handle both providers identically.
+async function callLLM(env, { model, max_tokens, temperature, system, messages }) {
+  const provider = (env.LLM_PROVIDER || "anthropic").toLowerCase();
+
+  if (provider === "ollama") {
+    const ollamaMessages = [
+      { role: "system", content: system },
+      ...messages.map(m => ({ role: m.role, content: contentToPlainText(m.content) })),
+    ];
+    const response = await fetch((env.OLLAMA_URL || "http://127.0.0.1:11434") + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: env.OLLAMA_MODEL || "mistral",
+        stream: false,
+        messages: ollamaMessages,
+        // num_ctx must be raised explicitly — Ollama's default (4k) is far
+        // smaller than the assembled system prompt. Mistral 7B tops out at 32k.
+        options: { temperature, num_predict: max_tokens, num_ctx: 32768 },
+      }),
+    });
+    let data;
+    try { data = await response.json(); } catch (e) {
+      return { error: { message: "Ollama returned a non-JSON response (" + response.status + ")" } };
+    }
+    if (!response.ok || data.error) {
+      return { error: { message: "Ollama: " + (data.error || response.statusText) } };
+    }
+    return {
+      content: [{ type: "text", text: (data.message && data.message.content) || "" }],
+      model: data.model,
+      stop_reason: data.done_reason || "end_turn",
+    };
+  }
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({ model, max_tokens, temperature, system, messages }),
+  });
+  return await response.json();
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -133,16 +215,13 @@ export default {
         }
       }
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify(body),
+        const data = await callLLM(env, {
+          model: body.model,
+          max_tokens: body.max_tokens || 8000,
+          temperature: body.temperature,
+          system: body.system,
+          messages: body.messages,
         });
-        const data = await response.json();
         return new Response(JSON.stringify(data), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ error: { message: "API request failed: " + e.message } }), { status: 502, headers: cors });
@@ -177,30 +256,21 @@ export default {
       ];
 
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-5",
-            max_tokens: 2000,
-            // Correction task, not generation — keep it deterministic
-            temperature: 0.1,
-            system: promptTclCorrection,
-            messages: [{
-              role: "user",
-              content: JSON.stringify({
-                raw_transcript: rawTranscript,
-                active_vocabulary: scopedVocabulary,
-                phonetic_candidates: candidates,
-              }),
-            }],
-          }),
+        const data = await callLLM(env, {
+          model: "claude-sonnet-4-5",
+          max_tokens: 2000,
+          // Correction task, not generation — keep it deterministic
+          temperature: 0.1,
+          system: promptTclCorrection,
+          messages: [{
+            role: "user",
+            content: JSON.stringify({
+              raw_transcript: rawTranscript,
+              active_vocabulary: scopedVocabulary,
+              phonetic_candidates: candidates,
+            }),
+          }],
         });
-        const data = await response.json();
         if (data.error) {
           return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
         }
@@ -278,23 +348,14 @@ export default {
         return new Response(JSON.stringify({ text: "" }), { headers: cors });
       }
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            // Fast/cheap model — this runs repeatedly as data is entered.
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 700,
-            temperature: 0.2,
-            system: promptLiveCheck,
-            messages: [{ role: "user", content }],
-          }),
+        const data = await callLLM(env, {
+          // Fast/cheap model — this runs repeatedly as data is entered.
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 700,
+          temperature: 0.2,
+          system: promptLiveCheck,
+          messages: [{ role: "user", content }],
         });
-        const data = await response.json();
         if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
         const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
         return new Response(JSON.stringify({ text }), { headers: cors });
@@ -318,22 +379,13 @@ export default {
         return new Response(JSON.stringify({ error: { message: "No question provided" } }), { status: 400, headers: cors });
       }
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-5",
-            max_tokens: 2000,
-            temperature: 0.3,
-            system: promptConsult,
-            messages,
-          }),
+        const data = await callLLM(env, {
+          model: "claude-sonnet-4-5",
+          max_tokens: 2000,
+          temperature: 0.3,
+          system: promptConsult,
+          messages,
         });
-        const data = await response.json();
         if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
         const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
         return new Response(JSON.stringify({ text }), { headers: cors });
