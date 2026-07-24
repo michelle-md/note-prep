@@ -211,6 +211,31 @@
     word-break: break-word; max-height: 520px; overflow-y: auto;
   }
 
+  /* Editable final note */
+  .note-edit {
+    width: 100%; background: #fff; border: 1px solid #E2DDD8; border-radius: 6px;
+    padding: 12px 14px; font-size: 13px; font-family: monospace;
+    color: #2C2825; line-height: 1.6; white-space: pre-wrap;
+    word-break: break-word; resize: vertical; min-height: 220px;
+    outline: none; display: block;
+  }
+  .note-edit:focus { border-color: #3B6B8A; }
+  .note-edit-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: #7A736C; margin-top: 6px; gap: 8px;
+  }
+  .edited-badge { color: #9A6B2E; font-weight: 600; }
+  .revert-note-btn {
+    background: none; border: 1px solid #B5AFA9; border-radius: 4px;
+    color: #7A736C; font-size: 11px; font-family: inherit;
+    padding: 3px 10px; cursor: pointer;
+  }
+  .revert-note-btn:active { background: #F0EDE8; }
+
+  /* Improvement suggestions (iteration analysis) */
+  .checks-box.iteration-box { border-left-color: #6B5C8A; }
+  .checks-title.iteration-title { color: #6B5C8A; }
+
   /* Output action row */
   .output-action-row {
     display: flex; gap: 8px; margin-top: 10px;
@@ -564,6 +589,9 @@ function rehydratePatient(p) {
     lastSyncAt: new Date(),
     liveCheck: p.liveCheck ? { ...p.liveCheck, at: p.liveCheck.at ? new Date(p.liveCheck.at) : null } : null,
     liveDosing: p.liveDosing ? { ...p.liveDosing, at: p.liveDosing.at ? new Date(p.liveDosing.at) : null } : null,
+    iteration: p.iteration ? { ...p.iteration, at: p.iteration.at ? new Date(p.iteration.at) : null } : null,
+    iterationLoading: false,
+    iterationError: null,
     consult: Array.isArray(p.consult) ? p.consult.map(c => ({ ...c, at: c.at ? new Date(c.at) : null })) : [],
     entries: (p.entries || []).map(e => ({
       ...e,
@@ -637,10 +665,8 @@ async function deletePatient(patientId) {
 function updateSyncIndicator() {}
 
 function copySoap(patientId) {
-  const patient = state.patients.find(p => p.id === patientId);
-  if (!patient || !patient.generatedOutput) return;
-  const soapOnly = patient.generatedOutput.split('\n---')[0].trim();
-  copyText(soapOnly);
+  // Legacy entry point — the SOAP body is now the editable final note.
+  copyFinalNote(patientId);
 }
 
 function handleIterateImages(files, patientId) {
@@ -859,16 +885,181 @@ function parseSections(raw) {
   return out;
 }
 
+// --- Editable final note ---------------------------------------------------
+// After generation the medical note becomes an editable text box. What is in
+// that box (patient.editedNote, falling back to the AI's @@NOTE@@ section) is
+// the final note — every copy action copies it, and it is what goes into
+// CareOn. Regenerating (Iterate note) replaces the baseline and clears the
+// manual edits.
+
+function generatedNoteText(patient) {
+  if (!patient.generatedOutput) return '';
+  return parseSections(patient.generatedOutput).note || patient.generatedOutput.trim();
+}
+
+function currentNoteText(patient) {
+  return patient.editedNote != null ? patient.editedNote : generatedNoteText(patient);
+}
+
+function noteWasEdited(patient) {
+  if (patient.editedNote == null) return false;
+  const norm = t => t.replace(/\s+/g, ' ').trim();
+  return norm(patient.editedNote) !== norm(generatedNoteText(patient));
+}
+
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.max(220, el.scrollHeight + 4) + 'px';
+}
+
+function onNoteEdit(patientId, el) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  p.editedNote = el.value;
+  autoGrow(el);
+  const meta = document.getElementById('noteEditMeta_' + patientId);
+  if (meta) meta.innerHTML = renderNoteEditMeta(p);
+  scheduleSync(patientId);
+}
+
+function renderNoteEditMeta(patient) {
+  const edited = noteWasEdited(patient);
+  const label = edited
+    ? '<span class="edited-badge">Edited</span> — this is the final note; copy puts exactly this text on the clipboard'
+    : 'Editable — type directly in the note; what you copy is what goes into CareOn';
+  const revert = edited
+    ? `<button class="revert-note-btn" onclick="revertNoteEdits('${patient.id}')">Revert to AI version</button>`
+    : '';
+  return `<span>${label}</span>${revert}`;
+}
+
+function revertNoteEdits(patientId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p) return;
+  if (noteWasEdited(p) && !confirm('Discard your manual edits and restore the AI-generated note?')) return;
+  p.editedNote = null;
+  render();
+  scheduleSync(patientId);
+}
+
+// Splice the edited note back into the full labelled output so "Copy all"
+// carries the final note, not the superseded AI draft.
+function replaceNoteSection(raw, edited) {
+  const start = raw.indexOf('@@NOTE@@');
+  if (start === -1) return edited;
+  const from = start + '@@NOTE@@'.length;
+  const markers = ['@@NOTE@@', '@@DOSING@@', '@@CAREON_CODE@@', '@@PROMETHEUS_CODE@@', '@@FLAGS@@', '@@MISSING@@'];
+  let end = raw.length;
+  markers.forEach(m => {
+    const idx = raw.indexOf(m, from);
+    if (idx !== -1 && idx < end) end = idx;
+  });
+  return raw.slice(0, from) + '\n' + edited.trim() + '\n\n' + raw.slice(end);
+}
+
 function copyAll(patientId) {
   const p = state.patients.find(p => p.id === patientId);
-  if (p && p.generatedOutput) copyText(p.generatedOutput);
+  if (!p || !p.generatedOutput) return;
+  const out = noteWasEdited(p)
+    ? replaceNoteSection(p.generatedOutput, p.editedNote)
+    : p.generatedOutput;
+  copyText(out);
+  maybeRunIteration(patientId);
+}
+
+function copyFinalNote(patientId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p || !p.generatedOutput) return;
+  copyText(currentNoteText(p));
+  maybeRunIteration(patientId);
 }
 
 function copySection(patientId, key) {
   const p = state.patients.find(p => p.id === patientId);
   if (!p || !p.generatedOutput) return;
+  if (key === 'note') { copyFinalNote(patientId); return; }
   const val = parseSections(p.generatedOutput)[key];
   if (val) copyText(val);
+}
+
+// --- Iteration analysis ------------------------------------------------------
+// Kicks off automatically when a note is copied. If the final note differs
+// from what the AI generated, both versions (plus the original typed inputs,
+// so added-but-never-provided data isn't misread as a rule failure) go to
+// /api/iteration, which returns a short list of suggested rule/skill changes
+// that would bring future generated notes closer to the final edited version.
+
+async function maybeRunIteration(patientId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (!p || !p.generatedOutput) return;
+  const generated = generatedNoteText(p);
+  const edited = currentNoteText(p);
+  if (!noteWasEdited(p)) return;          // nothing was changed manually
+  const sig = generated + '\u0000' + edited;
+  if (p._iterationSig === sig || p.iterationLoading) return;  // already analysed this exact pair
+  p._iterationSig = sig;
+  p.iterationLoading = true;
+  p.iterationError = null;
+  updateIterationBox(patientId);
+
+  const sourceText = p.entries.filter(e => e.type === 'text').map(e => e.content).join('\n\n');
+  const imageCount = p.entries.filter(e => e.type === 'image').length;
+
+  try {
+    const res = await fetch('/api/iteration', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generated, edited, sourceText, imageCount }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || 'Iteration analysis failed');
+    p.iteration = { text: (data.text || '').trim(), at: new Date() };
+    p.iterationLoading = false;
+    updateIterationBox(patientId);
+    scheduleSync(patientId);
+  } catch(e) {
+    p.iterationLoading = false;
+    p.iterationError = 'Improvement analysis unavailable — copy again to retry';
+    p._iterationSig = null;   // allow a retry on the next copy
+    updateIterationBox(patientId);
+  }
+}
+
+function copyIteration(patientId) {
+  const p = state.patients.find(p => p.id === patientId);
+  if (p && p.iteration && p.iteration.text) copyText(p.iteration.text);
+}
+
+function renderIterationBox(patient) {
+  if (!patient.iterationLoading && !patient.iterationError && !(patient.iteration && patient.iteration.text)) return '';
+  let meta = '';
+  let body;
+  let copyBtn = '';
+  if (patient.iterationLoading) {
+    body = '<div class="checks-empty">Comparing your final note with the AI draft…</div>';
+  } else if (patient.iterationError) {
+    body = `<div class="checks-empty">${esc(patient.iterationError)}</div>`;
+  } else {
+    const at = patient.iteration.at ? (patient.iteration.at instanceof Date ? patient.iteration.at : new Date(patient.iteration.at)) : null;
+    meta = at ? 'analysed ' + formatTime(at) : '';
+    body = `<div class="checks-body">${esc(patient.iteration.text)}</div>`;
+    copyBtn = `<button class="checks-refresh" onclick="copyIteration('${patient.id}')">Copy</button>`;
+  }
+  return `
+    <div class="checks-group-header" style="margin-top:14px">
+      <span class="checks-meta">${esc(meta)}</span>
+      ${copyBtn}
+    </div>
+    <div class="checks-box iteration-box">
+      <div class="checks-title iteration-title">Improvement suggestions</div>
+      ${body}
+    </div>`;
+}
+
+function updateIterationBox(patientId) {
+  const c = document.getElementById('iterationContainer');
+  const patient = state.patients.find(p => p.id === patientId);
+  if (c && patient && state.activePatientId === patientId) c.innerHTML = renderIterationBox(patient);
 }
 
 // --- Live "missing data & red flags" check -------------------------------
@@ -1127,6 +1318,10 @@ async function generateNote(patientId) {
     const output = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
     patient.generatedOutput = output;
     patient.generatedAt = new Date();
+    // A regeneration is a new baseline — manual edits applied to the previous
+    // version no longer line up with this text, so the edit box resets to it.
+    patient.editedNote = null;
+    patient._iterationSig = null;
     state.isGenerating = false;
     clearInterval(state.timerInterval);
     render();
@@ -1417,10 +1612,12 @@ function renderPatientView() {
         </div>
         <div class="result-block primary">
           <div class="result-block-header">
-            <span class="result-block-label">Medical note</span>
-            <button class="copy-btn" onclick="copySection('${patient.id}','note')">Copy</button>
+            <span class="result-block-label">Final note</span>
+            <button class="copy-btn" onclick="copyFinalNote('${patient.id}')">Copy final note</button>
           </div>
-          <div class="output-box">${esc(s.note || '')}</div>
+          <textarea class="note-edit" id="noteEdit_${patient.id}"
+            oninput="onNoteEdit('${patient.id}', this)">${esc(currentNoteText(patient))}</textarea>
+          <div class="note-edit-meta" id="noteEditMeta_${patient.id}">${renderNoteEditMeta(patient)}</div>
         </div>
         <div class="output-action-row">
           <button class="btn-iterate" onclick="setState({showIterate:!state.showIterate, iterateText:''})">
@@ -1428,6 +1625,7 @@ function renderPatientView() {
           </button>
         </div>
         ${iterateArea}
+        <div id="iterationContainer">${renderIterationBox(patient)}</div>
       </div>`;
 
     codingSection = `
@@ -1538,6 +1736,9 @@ function render() {
   // Focus new patient input if visible
   const inp = document.getElementById('newPatientInput');
   if (inp && document.activeElement !== inp) inp.focus();
+
+  // Size the editable note box to its content
+  document.querySelectorAll('.note-edit').forEach(autoGrow);
 }
 
 function openPatient(id) {

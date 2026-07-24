@@ -24,6 +24,7 @@ import promptFinalReminders from "./prompts/sa-ed-final-reminders.md";
 import promptTclCorrection from "./prompts/sa-ed-tcl-correction.md";
 import promptLiveCheck from "./prompts/sa-ed-live-check.md";
 import promptConsult from "./prompts/sa-ed-consult.md";
+import promptIteration from "./prompts/sa-ed-iteration.md";
 import tclVocab from "./tcl-vocab.json";
 import { buildActiveTerms, buildTermIndex, stageACandidates } from "./tcl-stage-a.js";
 
@@ -81,6 +82,35 @@ const SYSTEM_PROMPT = [
     "Missing or ambiguous clinical data worth completing before disposition. One per line. If there are none, write exactly: No obvious gaps.",
   ].join("\n"),
 ].join("\n\n---\n\n");
+
+// The iteration analysis (/api/iteration) needs to point its suggestions at
+// specific rule files, so it gets the note-generation prompt set with each
+// file's repo path attached — unlike SYSTEM_PROMPT, which joins them anonymously.
+const ITERATION_RULE_FILES = [
+  ["prompts/sa-ed-formatting.md", promptFormatting],
+  ["prompts/sa-ed-soap-new.md", promptSoapNew],
+  ["prompts/sa-ed-medical.md", promptMedical],
+  ["prompts/sa-ed-trauma.md", promptTrauma],
+  ["prompts/sa-ed-paediatric.md", promptPaediatric],
+  ["prompts/sa-ed-obs-gynae.md", promptObsGynae],
+  ["prompts/sa-ed-surgery.md", promptSurgery],
+  ["prompts/sa-ed-dosing.md", promptDosing],
+  ["prompts/sa-ed-decision-tools.md", promptDecisionTools],
+  ["prompts/sa-ed-billing.md", promptBilling],
+  ["prompts/sa-ed-icd10.md", promptIcd10],
+  ["prompts/sa-ed-critical-values.md", promptCriticalValues],
+  ["prompts/sa-ed-blood-gas.md", promptBloodGas],
+  ["prompts/sa-ed-pocus-cardiac.md", promptPocusCardiac],
+  ["prompts/sa-ed-pocus-lung.md", promptPocusLung],
+  ["prompts/sa-ed-pocus-aorta.md", promptPocusAorta],
+  ["prompts/sa-ed-pocus-dvt.md", promptPocusDvt],
+  ["prompts/sa-ed-pocus-efast.md", promptPocusEfast],
+  ["prompts/sa-ed-pocus-gallbladder.md", promptPocusGallbladder],
+  ["prompts/sa-ed-pocus-ocular.md", promptPocusOcular],
+  ["prompts/sa-ed-pocus-pelvic.md", promptPocusPelvic],
+  ["prompts/sa-ed-pocus-rush.md", promptPocusRush],
+  ["prompts/sa-ed-final-reminders.md", promptFinalReminders],
+];
 
 const PATIENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
@@ -361,6 +391,55 @@ export default {
         return new Response(JSON.stringify({ text }), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ error: { message: "Live check failed: " + e.message } }), { status: 502, headers: cors });
+      }
+    }
+
+    // POST /api/iteration — improvement loop. Fired by the client when a note
+    // is copied and the clinician has edited it manually. Compares the AI
+    // draft with the final edited note (plus the original typed inputs, so
+    // information the clinician added from outside the source data is not
+    // misread as a rule failure) against the current rule files, and returns
+    // a short list of suggested rule/skill changes. Uses its own system
+    // prompt (prompts/sa-ed-iteration.md), not the note generator.
+    if (request.method === "POST" && url.pathname === "/api/iteration") {
+      let body;
+      try { body = await request.json(); } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Invalid request body" } }), { status: 400, headers: cors });
+      }
+      const generated = typeof body.generated === "string" ? body.generated : "";
+      const edited = typeof body.edited === "string" ? body.edited : "";
+      if (!generated.trim() || !edited.trim()) {
+        return new Response(JSON.stringify({ error: { message: "Both the generated and the edited note are required" } }), { status: 400, headers: cors });
+      }
+      const sourceText = typeof body.sourceText === "string" ? body.sourceText : "";
+      const imageCount = Number.isFinite(body.imageCount) ? body.imageCount : 0;
+
+      const catalog = ITERATION_RULE_FILES
+        .map(([name, content]) => "===== " + name + " =====\n" + content)
+        .join("\n\n");
+
+      try {
+        const data = await callLLM(env, {
+          model: "claude-sonnet-4-5",
+          max_tokens: 1500,
+          // Analysis task — deterministic, not creative
+          temperature: 0.2,
+          system: promptIteration,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: "CURRENT RULE FILES:\n\n" + catalog },
+              { type: "text", text: "ORIGINAL CLINICAL INPUT (typed/pasted source data; " + imageCount + " image(s) were also attached but are not shown here):\n\n" + (sourceText.trim() || "(none)") },
+              { type: "text", text: "AI-GENERATED NOTE (before manual editing):\n\n" + generated },
+              { type: "text", text: "FINAL NOTE (after the clinician's manual edits — this went into the EHR):\n\n" + edited + "\n\nCompare the two notes and produce the suggested-changes list now, exactly in the format specified." },
+            ],
+          }],
+        });
+        if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
+        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        return new Response(JSON.stringify({ text }), { headers: cors });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: { message: "Iteration analysis failed: " + e.message } }), { status: 502, headers: cors });
       }
     }
 

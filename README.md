@@ -10,6 +10,24 @@ The `workers.dev` route is deliberately disabled (`workers_dev: false` in
 `wrangler.jsonc`): it served the same worker and shift data with no Access
 sign-in in front of it. Do not re-enable it without putting Access in front.
 
+## Final note editing & the improvement loop
+
+After generation, the medical note appears in an **editable text box** — the
+clinician can add or delete text directly, and that edited version is the final
+note. Every copy action ("Copy final note", "Copy all") copies the edited text;
+"Iterate note" (voice prompt / images + regenerate) still works and resets the
+edit box to the new AI baseline.
+
+When a note is copied and it differs from what the AI generated, the client
+fires `/api/iteration` in the background. The Worker sends the AI draft, the
+final edited note, the original typed inputs, and every rule file under
+`prompts/` to the model with `prompts/sa-ed-iteration.md` as system prompt. It
+returns a short list of suggested changes — new rules, rule updates, new or
+adjusted skill files — shown in the purple **Improvement suggestions** box with
+a Copy button, ready to paste into a Claude Code session to apply to the repo.
+Edits that only reflect case-specific information (results that arrived later,
+etc.) are deliberately not turned into suggestions.
+
 ## Cloud vs local AI
 
 Every AI call goes through one function in `worker.js` (`callLLM`), selected by the
