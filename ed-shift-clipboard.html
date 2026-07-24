@@ -232,10 +232,6 @@
   }
   .revert-note-btn:active { background: #F0EDE8; }
 
-  /* Improvement suggestions (iteration analysis) */
-  .checks-box.iteration-box { border-left-color: #6B5C8A; }
-  .checks-title.iteration-title { color: #6B5C8A; }
-
   /* Output action row */
   .output-action-row {
     display: flex; gap: 8px; margin-top: 10px;
@@ -589,9 +585,6 @@ function rehydratePatient(p) {
     lastSyncAt: new Date(),
     liveCheck: p.liveCheck ? { ...p.liveCheck, at: p.liveCheck.at ? new Date(p.liveCheck.at) : null } : null,
     liveDosing: p.liveDosing ? { ...p.liveDosing, at: p.liveDosing.at ? new Date(p.liveDosing.at) : null } : null,
-    iteration: p.iteration ? { ...p.iteration, at: p.iteration.at ? new Date(p.iteration.at) : null } : null,
-    iterationLoading: false,
-    iterationError: null,
     consult: Array.isArray(p.consult) ? p.consult.map(c => ({ ...c, at: c.at ? new Date(c.at) : null })) : [],
     entries: (p.entries || []).map(e => ({
       ...e,
@@ -986,8 +979,11 @@ function copySection(patientId, key) {
 // Kicks off automatically when a note is copied. If the final note differs
 // from what the AI generated, both versions (plus the original typed inputs,
 // so added-but-never-provided data isn't misread as a rule failure) go to
-// /api/iteration, which returns a short list of suggested rule/skill changes
-// that would bring future generated notes closer to the final edited version.
+// /api/iteration. The Worker compares them against the current rule files and
+// commits a suggested-changes file to the repo's iteration-suggestions/
+// folder, to be reviewed and applied in a later Claude Code session.
+// Deliberately invisible here: fire-and-forget, nothing rendered, no error
+// surfaced — a failed analysis never interrupts the clinical workflow.
 
 async function maybeRunIteration(patientId) {
   const p = state.patients.find(p => p.id === patientId);
@@ -996,11 +992,8 @@ async function maybeRunIteration(patientId) {
   const edited = currentNoteText(p);
   if (!noteWasEdited(p)) return;          // nothing was changed manually
   const sig = generated + '\u0000' + edited;
-  if (p._iterationSig === sig || p.iterationLoading) return;  // already analysed this exact pair
+  if (p._iterationSig === sig) return;    // already analysed this exact pair
   p._iterationSig = sig;
-  p.iterationLoading = true;
-  p.iterationError = null;
-  updateIterationBox(patientId);
 
   const sourceText = p.entries.filter(e => e.type === 'text').map(e => e.content).join('\n\n');
   const imageCount = p.entries.filter(e => e.type === 'image').length;
@@ -1009,57 +1002,13 @@ async function maybeRunIteration(patientId) {
     const res = await fetch('/api/iteration', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ generated, edited, sourceText, imageCount }),
+      body: JSON.stringify({ generated, edited, sourceText, imageCount, patientLabel: p.label }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message || 'Iteration analysis failed');
-    p.iteration = { text: (data.text || '').trim(), at: new Date() };
-    p.iterationLoading = false;
-    updateIterationBox(patientId);
-    scheduleSync(patientId);
   } catch(e) {
-    p.iterationLoading = false;
-    p.iterationError = 'Improvement analysis unavailable — copy again to retry';
     p._iterationSig = null;   // allow a retry on the next copy
-    updateIterationBox(patientId);
   }
-}
-
-function copyIteration(patientId) {
-  const p = state.patients.find(p => p.id === patientId);
-  if (p && p.iteration && p.iteration.text) copyText(p.iteration.text);
-}
-
-function renderIterationBox(patient) {
-  if (!patient.iterationLoading && !patient.iterationError && !(patient.iteration && patient.iteration.text)) return '';
-  let meta = '';
-  let body;
-  let copyBtn = '';
-  if (patient.iterationLoading) {
-    body = '<div class="checks-empty">Comparing your final note with the AI draft…</div>';
-  } else if (patient.iterationError) {
-    body = `<div class="checks-empty">${esc(patient.iterationError)}</div>`;
-  } else {
-    const at = patient.iteration.at ? (patient.iteration.at instanceof Date ? patient.iteration.at : new Date(patient.iteration.at)) : null;
-    meta = at ? 'analysed ' + formatTime(at) : '';
-    body = `<div class="checks-body">${esc(patient.iteration.text)}</div>`;
-    copyBtn = `<button class="checks-refresh" onclick="copyIteration('${patient.id}')">Copy</button>`;
-  }
-  return `
-    <div class="checks-group-header" style="margin-top:14px">
-      <span class="checks-meta">${esc(meta)}</span>
-      ${copyBtn}
-    </div>
-    <div class="checks-box iteration-box">
-      <div class="checks-title iteration-title">Improvement suggestions</div>
-      ${body}
-    </div>`;
-}
-
-function updateIterationBox(patientId) {
-  const c = document.getElementById('iterationContainer');
-  const patient = state.patients.find(p => p.id === patientId);
-  if (c && patient && state.activePatientId === patientId) c.innerHTML = renderIterationBox(patient);
 }
 
 // --- Live "missing data & red flags" check -------------------------------
@@ -1625,7 +1574,6 @@ function renderPatientView() {
           </button>
         </div>
         ${iterateArea}
-        <div id="iterationContainer">${renderIterationBox(patient)}</div>
       </div>`;
 
     codingSection = `

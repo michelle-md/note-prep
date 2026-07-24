@@ -9,3 +9,11 @@ OLLAMA_MODEL=mistral
 # CLOUD MODE (dev against the Anthropic API — fictional data only):
 # comment out the three lines above and set:
 # ANTHROPIC_API_KEY=sk-ant-...
+
+# Iteration suggestions (both modes): a fine-grained GitHub PAT with contents
+# read/write on the repo, used by /api/iteration to commit suggestion files to
+# iteration-suggestions/. Without it, iteration analyses fail silently — the
+# clinical workflow is unaffected.
+# GITHUB_TOKEN=github_pat_...
+# GITHUB_REPO=michelle-md/note-prep
+# GITHUB_BRANCH=main

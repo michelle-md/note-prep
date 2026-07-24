@@ -201,6 +201,72 @@ async function callLLM(env, { model, max_tokens, temperature, system, messages }
   return await response.json();
 }
 
+// ---- Iteration suggestions → GitHub -------------------------------------
+// Commits a suggested-changes file to iteration-suggestions/ in the repo via
+// the GitHub Contents API. Configuration:
+//   GITHUB_TOKEN  (Cloudflare secret) — fine-grained PAT, contents:read/write
+//                 on the repo only. Required.
+//   GITHUB_REPO   ("owner/repo", default "michelle-md/note-prep")
+//   GITHUB_BRANCH (default "main")
+
+function utf8ToBase64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+async function saveIterationSuggestions(env, { text, patientLabel, imageCount }) {
+  if (!env.GITHUB_TOKEN) {
+    return { error: "GITHUB_TOKEN not configured — cannot save iteration suggestions" };
+  }
+  const repo = env.GITHUB_REPO || "michelle-md/note-prep";
+  const branch = env.GITHUB_BRANCH || "main";
+
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[:]/g, "").slice(0, 15); // 2026-07-24T0930
+  const slug = (patientLabel || "patient")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "patient";
+  const rand = Math.random().toString(36).slice(2, 6);
+  const path = `iteration-suggestions/${stamp}-${slug}-${rand}.md`;
+
+  const fileBody = [
+    "# Iteration suggestions — " + (patientLabel || "unlabelled patient"),
+    "",
+    "- Captured: " + now.toISOString(),
+    "- Patient card: " + (patientLabel || "(none)"),
+    "- Images attached to the card (not analysed): " + imageCount,
+    "- Status: PENDING REVIEW — delete this file once applied or rejected.",
+    "",
+    "## Suggested changes",
+    "",
+    text,
+    "",
+  ].join("\n");
+
+  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    method: "PUT",
+    headers: {
+      "Authorization": "Bearer " + env.GITHUB_TOKEN,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "note-prep-worker",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: "Iteration suggestions: " + (patientLabel || "patient") + " (" + now.toISOString().slice(0, 10) + ")",
+      content: utf8ToBase64(fileBody),
+      branch,
+    }),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).message || ""; } catch(e) {}
+    return { error: "GitHub commit failed (" + res.status + (detail ? ": " + detail : "") + ")" };
+  }
+  return { path };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -398,9 +464,13 @@ export default {
     // is copied and the clinician has edited it manually. Compares the AI
     // draft with the final edited note (plus the original typed inputs, so
     // information the clinician added from outside the source data is not
-    // misread as a rule failure) against the current rule files, and returns
-    // a short list of suggested rule/skill changes. Uses its own system
-    // prompt (prompts/sa-ed-iteration.md), not the note generator.
+    // misread as a rule failure) against the current rule files, and commits
+    // the resulting suggested-changes list as a markdown file under
+    // iteration-suggestions/ in the GitHub repo — nothing is shown in the UI.
+    // The folder is reviewed and applied in a later Claude Code session.
+    // Needs the GITHUB_TOKEN Cloudflare secret (contents:write on the repo).
+    // Uses its own system prompt (prompts/sa-ed-iteration.md), not the note
+    // generator.
     if (request.method === "POST" && url.pathname === "/api/iteration") {
       let body;
       try { body = await request.json(); } catch(e) {
@@ -413,6 +483,7 @@ export default {
       }
       const sourceText = typeof body.sourceText === "string" ? body.sourceText : "";
       const imageCount = Number.isFinite(body.imageCount) ? body.imageCount : 0;
+      const patientLabel = typeof body.patientLabel === "string" ? body.patientLabel : "";
 
       const catalog = ITERATION_RULE_FILES
         .map(([name, content]) => "===== " + name + " =====\n" + content)
@@ -436,8 +507,18 @@ export default {
           }],
         });
         if (data.error) return new Response(JSON.stringify({ error: data.error }), { status: 502, headers: cors });
-        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-        return new Response(JSON.stringify({ text }), { headers: cors });
+        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+
+        // Nothing systematic found — don't clutter the folder with a file.
+        if (!text || /^No rule changes suggested/i.test(text)) {
+          return new Response(JSON.stringify({ ok: true, saved: false }), { headers: cors });
+        }
+
+        const saved = await saveIterationSuggestions(env, { text, patientLabel, imageCount });
+        if (saved.error) {
+          return new Response(JSON.stringify({ error: { message: saved.error } }), { status: 502, headers: cors });
+        }
+        return new Response(JSON.stringify({ ok: true, saved: true, path: saved.path }), { headers: cors });
       } catch(e) {
         return new Response(JSON.stringify({ error: { message: "Iteration analysis failed: " + e.message } }), { status: 502, headers: cors });
       }

@@ -46,8 +46,10 @@ plausibly have come from an image as "never provided".
 
 - A short numbered list, most impactful first. Maximum 6 items. Fewer is better.
 - Plain text only — no markdown headings, no tables, no code fences. The list is
-  shown in a small monospace box and pasted into a Claude Code session to apply,
-  so each item must be precise and self-contained.
+  saved as a file in the repo's `iteration-suggestions/` folder and reviewed in
+  a later Claude Code session to apply, so each item must be precise and
+  self-contained: the reviewer will not have the two notes in front of them,
+  only your list.
 - Each item follows exactly this shape:
 
   1. [UPDATE RULE] prompts/sa-ed-formatting.md

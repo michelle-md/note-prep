@@ -21,12 +21,18 @@ edit box to the new AI baseline.
 When a note is copied and it differs from what the AI generated, the client
 fires `/api/iteration` in the background. The Worker sends the AI draft, the
 final edited note, the original typed inputs, and every rule file under
-`prompts/` to the model with `prompts/sa-ed-iteration.md` as system prompt. It
-returns a short list of suggested changes — new rules, rule updates, new or
-adjusted skill files — shown in the purple **Improvement suggestions** box with
-a Copy button, ready to paste into a Claude Code session to apply to the repo.
-Edits that only reflect case-specific information (results that arrived later,
-etc.) are deliberately not turned into suggestions.
+`prompts/` to the model with `prompts/sa-ed-iteration.md` as system prompt. The
+resulting short list of suggested changes — new rules, rule updates, new or
+adjusted skill files — is committed straight to the repo as a markdown file
+under `iteration-suggestions/` (see the README there for the review workflow).
+Nothing appears in the clipboard UI. Edits that only reflect case-specific
+information (results that arrived later, etc.) are deliberately not turned into
+suggestions, and produce no file.
+
+Saving suggestions needs the `GITHUB_TOKEN` Cloudflare secret — a fine-grained
+personal access token with contents read/write on this repo only:
+`npx wrangler secret put GITHUB_TOKEN`. Repo and branch default to
+`michelle-md/note-prep` / `main` (`GITHUB_REPO` / `GITHUB_BRANCH` vars override).
 
 ## Cloud vs local AI
 
